@@ -1,5 +1,5 @@
 train:
-  model_name: "srgan" # 模型名称
+  model_name: "esrgan" # 模型名称
   result_path: "./result" # 结果保存路径
   # train_resource_path: "/home/hh/zyk/datasets/DIV2K_train_HR" # 训练图片资源路径
   # test_resource_path: "/home/hh/zyk/datasets/DIV2K_valid_HR" # 测试图片资源路径

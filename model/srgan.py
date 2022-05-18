@@ -18,7 +18,6 @@ from tensorflow.keras.layers import (
 )
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-
 from util.data_loader import DataLoader
 from util.logger import create_logger
 
@@ -359,7 +358,7 @@ class SRGAN(object):
             # 保存模型权重
             if (epoch + 1) % self.save_models_interval == 0:
                 self.save_models(epoch, save_models_dir_path)
-
+        
     def residual_block(self, input, filters):
         """构建残差块
 
@@ -395,7 +394,7 @@ class SRGAN(object):
         return x
 
     def disc_basic_block(self, input, filters, strides=1, bn=True):
-        """判别器基本模块: Conv2D + LeakyReLU + BN 
+        """判别器基本模块: Conv2D + LeakyReLU + BN
 
         Args:
             input (tf.tenosr): 输入张量
