@@ -191,7 +191,8 @@ class DataLoader(object):
             hr_img = tf.image.random_flip_left_right(hr_img)
 
         # 归一化
-        hr_img = tf.image.convert_image_dtype(hr_img, tf.float32)
+        hr_img = tf.cast(hr_img, tf.float32) / 127.5 - 1
+        # hr_img = tf.image.convert_image_dtype(hr_img, tf.float32)
 
         # 双三次下采样（基于 tensorflow）
         lr_img = tf.image.resize(

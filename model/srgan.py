@@ -214,13 +214,16 @@ class SRGAN(object):
             models (list): 模型列表
             epoch (int): 当前 epoch
         """
-        if (epoch + 1) % 500 == 0:
+        if epoch % 500 == 0:
             for model in models:
                 lr = K.get_value(model.optimizer.lr)
                 K.set_value(model.optimizer.lr, lr * 0.5)
                 print("lr changed to {}".format(lr * 0.5))
 
     def train(self):
+        """
+        训练模型
+        """
         # 保存模型文件夹路径
         save_models_dir_path = os.path.join(self.result_path, self.model_name, "models")
         # 若保存模型文件夹不存在，则创建
@@ -243,16 +246,16 @@ class SRGAN(object):
         if not os.path.isdir(save_history_dir_path):
             os.makedirs(save_history_dir_path)
 
-        # 若初始 epoch 不为 0，则加载模型
-        if self.init_epoch != 0:
+        # 若初始 epoch 大于 1，则加载模型
+        if self.init_epoch > 1:
             self.generator = tf.keras.models.load_model(
                 os.path.join(
-                    save_models_dir_path, "gen_model_epoch_%d" % (self.init_epoch + 1)
+                    save_models_dir_path, "gen_model_epoch_%d" % (self.init_epoch)
                 )
             )
             self.discriminator = tf.keras.models.load_model(
                 os.path.join(
-                    save_models_dir_path, "dis_model_epoch_%d" % (self.init_epoch + 1)
+                    save_models_dir_path, "dis_model_epoch_%d" % (self.init_epoch)
                 )
             )
 
@@ -261,7 +264,7 @@ class SRGAN(object):
         d_loss_list = []
         d_acc_list = []
         # 迭代训练
-        for epoch in range(self.init_epoch, self.epochs):
+        for epoch in range(self.init_epoch, self.epochs + 1):
             per_loss_batch_total = 0.0
             d_loss_batch_total = 0.0
             d_acc_batch_total = 0.0
@@ -269,9 +272,6 @@ class SRGAN(object):
             # 更改学习率
             self.scheduler([self.combined, self.discriminator], epoch)
 
-            # -------------------- #
-            # 训练判别器
-            # -------------------- #
             # 加载训练数据集
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
                 # 构建标签数组
@@ -280,7 +280,9 @@ class SRGAN(object):
 
                 fake_imgs = self.generator.predict(lr_imgs)
 
-                # # 训练判别器
+                # -------------------- #
+                # 训练判别器
+                # -------------------- #
                 # # self.discriminator.trainable = True
                 # fake_imgs = self.generator.predict(lr_imgs)
                 # d_real_loss = self.discriminator.train_on_batch(hr_imgs, real_labels)
@@ -320,7 +322,7 @@ class SRGAN(object):
                     self.logger.info(
                         "epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, d_acc: %.2f%%, per_loss:%.4f, g_loss:%.4f, con_loss:%.4f"
                         % (
-                            epoch + 1,
+                            epoch,
                             self.epochs,
                             batch_idx + 1,
                             len(self.data_loader.train_data),
@@ -332,7 +334,7 @@ class SRGAN(object):
                         )
                     )
 
-            epoch_list.append(epoch + 1)
+            epoch_list.append(epoch)
             # 计算当前 epoch 下的平均损失和平均准确率
             per_loss_list.append(
                 per_loss_batch_total / len(self.data_loader.train_data)
@@ -341,7 +343,7 @@ class SRGAN(object):
             d_acc_list.append(d_acc_batch_total / len(self.data_loader.train_data))
 
             # 保存历史数据
-            if (epoch + 1) % self.save_history_interval == 0:
+            if (epoch) % self.save_history_interval == 0:
                 self.save_history(
                     epoch,
                     save_history_dir_path,
@@ -352,13 +354,13 @@ class SRGAN(object):
                 )
 
             # 保存图片
-            if (epoch + 1) % self.save_images_interval == 0:
+            if epoch % self.save_images_interval == 0:
                 self.save_images(epoch, save_images_dir_path, 5)
 
-            # 保存模型权重
-            if (epoch + 1) % self.save_models_interval == 0:
+            # 保存模型
+            if epoch % self.save_models_interval == 0:
                 self.save_models(epoch, save_models_dir_path)
-        
+
     def residual_block(self, input, filters):
         """构建残差块
 
@@ -434,9 +436,9 @@ class SRGAN(object):
 
             # 反归一化
             lr_img, hr_img, sr_img = (
-                tf.cast(lr_img * 255.0, dtype=tf.uint8),
-                tf.cast(hr_img * 255.0, dtype=tf.uint8),
-                tf.cast(sr_img * 255.0, dtype=tf.uint8),
+                tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8),
+                tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8),
+                tf.cast((sr_img + 1) * 127.5, dtype=tf.uint8),
             )
 
             axs[i, 0].imshow(lr_img)
@@ -455,7 +457,7 @@ class SRGAN(object):
                 axs[i, 2].set_title("Ground Truth")
         # 保存图片
         fig.savefig(
-            os.path.join(save_images_dir_path, "test_epoch_%d.png" % (epoch + 1)),
+            os.path.join(save_images_dir_path, "test_epoch_%d.png" % epoch),
             dpi=500,
             bbox_inches="tight",
         )
@@ -476,16 +478,16 @@ class SRGAN(object):
             if os.path.exists(file_path):
                 shutil.rmtree(file_path)
 
-        # 保存生成器权重
+        # 保存生成器
         self.generator.save(
-            os.path.join(save_models_dir_path, "gen_model_epoch_%d" % (epoch + 1)),
-            True,
+            os.path.join(save_models_dir_path, "gen_model_epoch_%d" % epoch),
+            save_format="tf",
         )
 
-        # 保存判别器权重
+        # 保存判别器
         self.discriminator.save(
-            os.path.join(save_models_dir_path, "dis_model_epoch_%d" % (epoch + 1)),
-            True,
+            os.path.join(save_models_dir_path, "dis_model_epoch_%d" % epoch),
+            save_format="tf",
         )
 
     def save_history(
@@ -529,7 +531,7 @@ class SRGAN(object):
 
         fig.tight_layout()
         fig.savefig(
-            os.path.join(save_history_dir_path, "history_epoch_%d.png" % (epoch + 1)),
+            os.path.join(save_history_dir_path, "history_epoch_%d.png" % epoch),
             dpi=500,
             bbox_inches="tight",
         )
