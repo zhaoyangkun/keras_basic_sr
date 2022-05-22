@@ -1,20 +1,17 @@
-import numpy as np
-from tensorflow.keras import backend as K
-
-
-def spectral_norm(w, r=5):
-    w_shape = K.int_shape(w)
-    in_dim = np.prod(w_shape[:-1]).astype(int)
-    out_dim = w_shape[-1]
-    w = K.reshape(w, [in_dim, out_dim])
-    u = K.ones([1, in_dim])
-    for _ in range(r):
-        v = K.l2_normalize(K.dot(u, w))
-        u = K.l2_normalize(K.dot(v, K.transpose(w)))
-
-    return K.sum(K.dot(K.dot(u, w), K.transpose(v)))
-
+import tensorflow as tf
 
 # 谱归一化层
-def spectral_normalization(w):
-    return w / spectral_norm(w)
+class SpectralNorm(tf.keras.constraints.Constraint):
+    def __init__(self, n_iter=5):
+        self.n_iter = n_iter
+
+    def call(self, input_weights):
+        w = tf.reshape(input_weights, (-1, input_weights.shape[-1]))
+        u = tf.random.normal((w.shape[0], 1))
+        for _ in range(self.n_iter):
+            v = tf.matmul(w, u, transpose_a=True)
+            v /= tf.norm(v)
+            u = tf.matmul(w, v)
+            u /= tf.norm(u)
+        spec_norm = tf.matmul(u, tf.matmul(w, v), transpose_a=True)
+        return input_weights / spec_norm

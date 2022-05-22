@@ -24,7 +24,7 @@ from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader
-from util.layer import spectral_normalization
+from util.layer import SpectralNorm
 from util.logger import create_logger
 
 
@@ -47,6 +47,8 @@ class ESRGAN(object):
         save_images_interval=10,
         save_models_interval=50,
         save_history_interval=10,
+        pretrain_model_path="",
+        use_sn=False,
     ):
         self.model_name = model_name  # 模型名称
         self.result_path = result_path  # 结果保存路径
@@ -70,6 +72,7 @@ class ESRGAN(object):
         self.save_images_interval = save_images_interval  # 保存图片迭代间隔
         self.save_models_interval = save_models_interval  # 保存模型迭代间隔
         self.save_history_interval = save_history_interval  # 保存历史数据迭代间隔
+        self.pretrain_model_path = pretrain_model_path  # 预训练模型路径
 
         # 创建日志记录器
         log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
@@ -89,34 +92,28 @@ class ESRGAN(object):
         )
 
         # 优化器
-        # gen_lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        #     initial_learning_rate=self.gen_lr, decay_steps=1
-        # )
-        self.pre_optimizer = Adam(1e-4)
+        self.pre_optimizer = Adam(2e-4)
         self.gen_optimizer = Adam(1e-4)
         self.dis_optimizer = Adam(1e-4)
 
         # 损失权重
         self.loss_weights = {"percept": 1, "gen": 5e-3, "pixel": 1e-2}
 
-        # 损失类型
-        self.gan_loss = "mse"
-        self.dis_loss = "binary_crossentropy"
-
         # 损失函数
-        self.mse = MeanSquaredError()
-        self.mae = MeanAbsoluteError()
+        self.mse_loss = MeanSquaredError()
+        self.mae_loss = MeanAbsoluteError()
+
+        # 谱归一化层
+        self.sn_layer = SpectralNorm() if use_sn else None
+
+        # 构建 vgg 模型
+        self.vgg = self.build_vgg()
 
         # 构建生成器
         self.generator = self.build_generator()
-        # 构建 vgg 模型
-        self.vgg = self.build_vgg()
+
         # 构建判别器
         self.discriminator = self.build_discriminator()
-
-        # self.RaGAN = self.build_ragan()  #  构建 RaGAN 模型
-        # self.combined = self.build_combined()  # 构建 combined 模型
-        # self.compile_vgg(self.vgg)  # 编译 vgg 模型
 
     def subpixel_conv2d(self, name, scale=2):
         """亚像素卷积层
@@ -152,39 +149,58 @@ class ESRGAN(object):
 
         return model
 
-    def build_generator(self, sn=False):
+    def build_generator(self):
         """
         构建生成器
         """
-        sn_layer = spectral_normalization if sn else None
 
         def dense_block(input):
             x1 = Conv2D(
-                64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+                64,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+                kernel_constraint=self.sn_layer,
             )(input)
             x1 = LeakyReLU(0.2)(x1)
             x1 = Concatenate()([input, x1])
 
             x2 = Conv2D(
-                64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+                64,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+                kernel_constraint=self.sn_layer,
             )(x1)
             x2 = LeakyReLU(0.2)(x2)
             x2 = Concatenate()([input, x1, x2])
 
             x3 = Conv2D(
-                64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+                64,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+                kernel_constraint=self.sn_layer,
             )(x2)
             x3 = LeakyReLU(0.2)(x3)
             x3 = Concatenate()([input, x1, x2, x3])
 
             x4 = Conv2D(
-                64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+                64,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+                kernel_constraint=self.sn_layer,
             )(x3)
             x4 = LeakyReLU(0.2)(x4)
             x4 = Concatenate()([input, x1, x2, x3, x4])
 
             x5 = Conv2D(
-                64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+                64,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+                kernel_constraint=self.sn_layer,
             )(x4)
             x5 = Lambda(lambda x: x * 0.2)(x5)
             output = Add()([x5, input])
@@ -218,7 +234,11 @@ class ESRGAN(object):
 
         # RRDB 之前
         x_start = Conv2D(
-            64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+            64,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            kernel_constraint=self.sn_layer,
         )(lr_input)
         x_start = LeakyReLU(0.5)(x_start)
 
@@ -227,7 +247,11 @@ class ESRGAN(object):
 
         # RRDB 之后
         x = Conv2D(
-            64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+            64,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            kernel_constraint=self.sn_layer,
         )(x)
         x = Lambda(lambda x: x * 0.2)(x)
         x = Add()([x, x_start])
@@ -237,7 +261,11 @@ class ESRGAN(object):
             x = upsample(x, i + 1)  # 每次上采样，图像尺寸变为原来的两倍
 
         x = Conv2D(
-            64, kernel_size=3, strides=1, padding="same", kernel_constraint=sn_layer
+            64,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            kernel_constraint=self.sn_layer,
         )(x)
         x = LeakyReLU(0.2)(x)
         hr_output = Conv2D(
@@ -249,7 +277,7 @@ class ESRGAN(object):
 
         return model
 
-    def build_discriminator(self, filters=64, sn=False):
+    def build_discriminator(self, filters=64):
         """构建判别器
 
         Args:
@@ -257,13 +285,12 @@ class ESRGAN(object):
         """
 
         def conv2d_block(input, filters, strides=1, bn=True):
-            sn_layer = spectral_normalization if sn else None
             x = Conv2D(
                 filters,
                 kernel_size=3,
                 strides=strides,
                 padding="same",
-                kernel_constraint=sn_layer,
+                kernel_constraint=self.sn_layer,
             )(input)
             if bn:
                 x = BatchNormalization(momentum=0.8)(x)
@@ -309,7 +336,7 @@ class ESRGAN(object):
         hr_generated_features = self.vgg(hr_generated) / 12.75
         hr_features = self.vgg(hr_img) / 12.75
 
-        return self.mse(hr_features, hr_generated_features)
+        return self.mse_loss(hr_features, hr_generated_features)
 
     def generator_loss(self, real_logit, fake_logit):
         """
@@ -342,6 +369,17 @@ class ESRGAN(object):
 
         return fake_logit, real_logit
 
+    def pretrain_scheduler(self, models, mini_batches):
+        """
+        预训练中动态修改学习率
+        """
+        # 每隔 200000 次 minibatch，学习率衰减一半
+        if mini_batches % (200000) == 0:
+            for model in models:
+                lr = K.get_value(model.optimizer.lr)
+                K.set_value(model.optimizer.lr, lr * 0.5)
+                print("pretrain lr changed to {}".format(lr * 0.5))
+
     def scheduler(self, models, epoch):
         """
         动态修改学习率
@@ -350,7 +388,7 @@ class ESRGAN(object):
             for model in models:
                 lr = K.get_value(model.optimizer.lr)
                 K.set_value(model.optimizer.lr, lr * 0.5)
-                print("lr changed to {}".format(lr * 0.5))
+                print("train lr changed to {}".format(lr * 0.5))
 
     @tf.function
     def pretrain_step(self, lr_img, hr_img):
@@ -359,7 +397,7 @@ class ESRGAN(object):
         """
         with tf.GradientTape() as tape:
             hr_generated = self.generator(lr_img, training=True)
-            loss = self.mse(hr_img, hr_generated)
+            loss = self.mae_loss(hr_img, hr_generated)
 
         gradients = tape.gradient(loss, self.generator.trainable_variables)
         self.pre_optimizer.apply_gradients(
@@ -372,14 +410,73 @@ class ESRGAN(object):
         """
         预训练
         """
+        # 保存历史数据文件夹路径
+        save_history_dir_path = os.path.join(
+            self.result_path, self.model_name, "history", "pretrain"
+        )
+        # 若保存历史数据文件夹不存在，则创建
+        if not os.path.isdir(save_history_dir_path):
+            os.makedirs(save_history_dir_path)
+
+        # 保存模型文件夹路径
+        save_models_dir_path = os.path.join(
+            self.result_path, self.model_name, "models", "pretrain"
+        )
+        # 若保存模型文件夹不存在，则创建
+        if not os.path.isdir(save_models_dir_path):
+            os.makedirs(save_models_dir_path)
+
+        epoch_list = tf.constant([])
+        loss_list = tf.constant([], dtype=tf.float32)
+        batch_idx_count = tf.constant(
+            len(self.data_loader.train_data), dtype=tf.float32
+        )
         for epoch in range(self.init_epoch, self.epochs + 1):
+            loss_batch_total = tf.constant(0, dtype=tf.float32)
+
             # 加载训练数据集，并训练
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
+                # 计算 mini-batch 数目
+                mini_batches = (
+                    (epoch - 1) * len(self.data_loader.train_data) + batch_idx + 1
+                )
+
+                # 根据 mini-batch 数目动态修改学习率
+                self.pretrain_scheduler([self.generator], mini_batches)
+
+                # 单步训练
                 loss = self.pretrain_step(lr_imgs, hr_imgs)
-                if batch_idx % self.log_interval == 0:
-                    tf.print(
-                        "Epoch: {}, batch: {}, loss: {}".format(epoch, batch_idx, loss)
+                loss = loss.numpy().item()
+                loss_batch_total += loss
+
+                # 输出日志
+                if (batch_idx + 1) % self.log_interval == 0:
+                    self.logger.info(
+                        "epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
+                        % (
+                            epoch,
+                            self.epochs,
+                            batch_idx + 1,
+                            batch_idx_count,
+                            loss,
+                        )
                     )
+
+            # 统计 epoch 和 loss
+            epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
+            loss_list = tf.concat(
+                [loss_list, [loss_batch_total / batch_idx_count]], axis=0
+            )
+
+            # 保存历史数据
+            if epoch % self.save_history_interval == 0:
+                self.save_pretrain_history(
+                    epoch, save_history_dir_path, epoch_list, loss_list
+                )
+
+            # 保存模型
+            if epoch % self.save_models_interval == 0:
+                self.save_pretrain_models(epoch, save_models_dir_path)
 
     @tf.function
     def train_step(self, lr_img, hr_img):
@@ -406,7 +503,7 @@ class ESRGAN(object):
             # ***
             percept_loss = self.content_loss(hr_img, hr_generated)
             generator_loss = self.generator_loss(real_logit, fake_logit)
-            pixel_loss = self.mae(hr_img, hr_generated)
+            pixel_loss = self.mae_loss(hr_img, hr_generated)
             generator_total_loss = (
                 self.loss_weights["percept"] * percept_loss
                 + self.loss_weights["gen"] * generator_loss
@@ -419,14 +516,14 @@ class ESRGAN(object):
             # 计算 psnr 和 ssim
             psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
             ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
-
+        # 计算梯度
         gradients_generator = gen_tape.gradient(
             generator_total_loss, self.generator.trainable_variables
         )
         gradients_discriminator = disc_tape.gradient(
             discriminator_loss, self.discriminator.trainable_variables
         )
-
+        # 更新优化器参数
         self.gen_optimizer.apply_gradients(
             zip(gradients_generator, self.generator.trainable_variables)
         )
@@ -460,6 +557,10 @@ class ESRGAN(object):
         if not os.path.isdir(save_history_dir_path):
             os.makedirs(save_history_dir_path)
 
+        # 加载预训练模型
+        if self.pretrain_model_path:
+            self.generator.load_weights(self.pretrain_model_path)
+
         # 若初始 epoch 大于 1，则加载模型
         if self.init_epoch > 1:
             self.generator = tf.keras.models.load_model(
@@ -473,17 +574,19 @@ class ESRGAN(object):
                 )
             )
 
-        epoch_list = []
-        g_loss_list = []
-        d_loss_list = []
-        psnr_list = []
-        ssim_list = []
+        epoch_list = tf.constant([])
+        g_loss_list = tf.constant([], dtype=tf.float32)
+        d_loss_list = tf.constant([], dtype=tf.float32)
+        psnr_list = tf.constant([], dtype=tf.float32)
+        ssim_list = tf.constant([], dtype=tf.float32)
         for epoch in range(self.init_epoch, self.epochs + 1):
-            g_loss_batch_total = 0.0
-            d_loss_batch_total = 0.0
-            psnr_batch_total = 0.0
-            ssim_batch_total = 0.0
-            batch_idx_count = len(self.data_loader.train_data)
+            g_loss_batch_total = tf.constant(0, dtype=tf.float32)
+            d_loss_batch_total = tf.constant(0, dtype=tf.float32)
+            psnr_batch_total = tf.constant(0, dtype=tf.float32)
+            ssim_batch_total = tf.constant(0, dtype=tf.float32)
+            batch_idx_count = tf.constant(
+                len(self.data_loader.train_data), dtype=tf.float32
+            )
 
             # 修改学习率
             self.scheduler([self.generator], epoch)
@@ -519,11 +622,19 @@ class ESRGAN(object):
                         )
                     )
 
-            epoch_list.append(epoch)
-            g_loss_list.append(g_loss_batch_total / batch_idx_count)
-            d_loss_list.append(d_loss_batch_total / batch_idx_count)
-            psnr_list.append(psnr_batch_total / batch_idx_count)
-            ssim_list.append(ssim_batch_total / batch_idx_count)
+            epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
+            g_loss_list = tf.concat(
+                [g_loss_list, [g_loss_batch_total / batch_idx_count]], axis=0
+            )
+            d_loss_list = tf.concat(
+                [d_loss_list, [d_loss_batch_total / batch_idx_count]], axis=0
+            )
+            psnr_list = tf.concat(
+                [psnr_list, [psnr_batch_total / batch_idx_count]], axis=0
+            )
+            ssim_list = tf.concat(
+                [ssim_list, [ssim_batch_total / batch_idx_count]], axis=0
+            )
 
             # 保存历史数据
             if epoch % self.save_history_interval == 0:
@@ -544,6 +655,35 @@ class ESRGAN(object):
             # 保存模型
             if epoch % self.save_models_interval == 0:
                 self.save_models(epoch, save_models_dir_path)
+
+    def save_pretrain_history(
+        self, epoch, save_history_dir_path, epoch_list, loss_list
+    ):
+        """
+        保存预训练历史数据
+        """
+        fig = plt.figure(figsize=(10, 10))
+
+        # 绘制损失曲线
+        ax = plt.subplot(1, 1, 1)
+        ax.set_title("Loss")
+        (line,) = ax.plot(
+            epoch_list, loss_list, color="deepskyblue", marker=".", label="loss"
+        )
+        ax.set_xlabel("epoch")
+        ax.set_ylabel("Loss")
+        ax.legend(handles=[line], loc="upper right")
+
+        fig.tight_layout()
+        fig.savefig(
+            os.path.join(
+                save_history_dir_path, "pretrain_history_epoch_%d.png" % epoch
+            ),
+            dpi=500,
+            bbox_inches="tight",
+        )
+        fig.clear()
+        plt.close(fig)
 
     def save_history(
         self,
@@ -581,7 +721,7 @@ class ESRGAN(object):
         )
         ax_2.set_xlabel("epoch")
         ax_2.set_ylabel("PSNR")
-        ax_2.legend(handles=[line_3], loc="upper right")
+        ax_2.legend(handles=[line_3], loc="upper left")
 
         # 绘制损失曲线
         ax_3 = plt.subplot(2, 2, 4)
@@ -591,11 +731,11 @@ class ESRGAN(object):
         )
         ax_3.set_xlabel("epoch")
         ax_3.set_ylabel("SSIM")
-        ax_3.legend(handles=[line_4], loc="upper right")
+        ax_3.legend(handles=[line_4], loc="upper left")
 
         fig.tight_layout()
         fig.savefig(
-            os.path.join(save_history_dir_path, "history_epoch_%d.png" % epoch),
+            os.path.join(save_history_dir_path, "train_history_epoch_%d.png" % epoch),
             dpi=500,
             bbox_inches="tight",
         )
@@ -631,7 +771,7 @@ class ESRGAN(object):
             axs[i, 1].imshow(sr_img)
             axs[i, 1].axis("off")
             if i == 0:
-                axs[i, 1].set_title("SRGAN")
+                axs[i, 1].set_title("ESRGAN")
 
             axs[i, 2].imshow(hr_img)
             axs[i, 2].axis("off")
@@ -646,6 +786,25 @@ class ESRGAN(object):
         fig.clear()
         plt.close(fig)
 
+    def save_pretrain_models(self, epoch, save_models_dir_path):
+        """
+        保存预训练模型
+        """
+        # 删除原先的模型文件，仅保存最新的模型
+        file_name_list = os.listdir(save_models_dir_path)
+        for file_name in file_name_list:
+            file_path = os.path.join(save_models_dir_path, file_name)
+            if os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+            elif os.path.isfile(file_path):
+                os.remove(file_path)
+
+        # 保存生成器权重
+        self.generator.save_weights(
+            os.path.join(save_models_dir_path, "gen_weights_epoch_%d.ckpt" % epoch),
+            save_format="tf",
+        )
+
     def save_models(self, epoch, save_models_dir_path):
         """
         保存模型
@@ -654,8 +813,10 @@ class ESRGAN(object):
         file_name_list = os.listdir(save_models_dir_path)
         for file_name in file_name_list:
             file_path = os.path.join(save_models_dir_path, file_name)
-            if os.path.exists(file_path):
+            if os.path.isdir(file_path):
                 shutil.rmtree(file_path)
+            elif os.path.isfile(file_path):
+                os.remove(file_path)
 
         # 保存生成器
         self.generator.save(
