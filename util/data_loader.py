@@ -16,8 +16,10 @@ class DataLoader(object):
         train_resource_path,
         test_resource_path,
         batch_size=4,
-        hr_img_height=128,
-        hr_img_width=128,
+        train_hr_img_height=128,
+        train_hr_img_width=128,
+        valid_hr_img_height=128,
+        valid_hr_img_width=128,
         scale_factor=4,
         max_workers=4,
         data_enhancement_factor=1,
@@ -25,8 +27,10 @@ class DataLoader(object):
         self.train_resource_path = train_resource_path  # 训练图片资源路径
         self.test_resource_path = test_resource_path  # 测试图片资源路径
         self.batch_size = batch_size  # 单次训练的图片数量
-        self.hr_img_height = hr_img_height  # 原图高度
-        self.hr_img_width = hr_img_width  # 原图宽度
+        self.train_hr_img_height = train_hr_img_height  # 训练过程中原图高度
+        self.train_hr_img_width = train_hr_img_width  # 训练过程中原图宽度
+        self.valid_hr_img_height = valid_hr_img_height  # 验证过程中原图高度
+        self.valid_hr_img_width = valid_hr_img_width  # 验证过程中原图宽度
         self.scale_factor = scale_factor  # 下采样倍数
         self.max_workers = max_workers  # 多线程最大线程数
         self.data_enhancement_factor = (
@@ -54,7 +58,10 @@ class DataLoader(object):
             train_resource_path_list += ori_train_resource_path_list
         # 处理图片
         train_lr_img_list, train_hr_img_list = self.process_img_data(
-            train_resource_path_list, is_center_crop=False
+            train_resource_path_list,
+            self.train_hr_img_height,
+            self.train_hr_img_width,
+            is_center_crop=False,
         )
 
         # 构建训练数据集
@@ -75,6 +82,8 @@ class DataLoader(object):
         # 处理图片
         test_lr_img_list, test_hr_img_list = self.process_img_data(
             test_resource_path_list,
+            self.valid_hr_img_height,
+            self.valid_hr_img_width,
             is_center_crop=True,
             is_random_crop=False,
             is_random_flip=False,
@@ -89,6 +98,8 @@ class DataLoader(object):
     def process_img_data(
         self,
         resource_path_list,
+        hr_img_height,
+        hr_img_width,
         is_random_flip=True,
         is_random_crop=True,
         is_center_crop=False,
@@ -112,15 +123,17 @@ class DataLoader(object):
             0,
             shape=[
                 0,
-                self.hr_img_height // self.scale_factor,
-                self.hr_img_width // self.scale_factor,
+                hr_img_height // self.scale_factor,
+                hr_img_width // self.scale_factor,
                 3,
             ],
             dtype=tf.float32,
         )
-        # 原始图片列表
+        # 原图列表
         hr_img_list = tf.constant(
-            0, shape=[0, self.hr_img_height, self.hr_img_width, 3], dtype=tf.float32,
+            0,
+            shape=[0, hr_img_height, hr_img_width, 3],
+            dtype=tf.float32,
         )
 
         # 多线程处理图片
@@ -129,6 +142,8 @@ class DataLoader(object):
             for (lr_img, hr_img) in pool.map(
                 self.process_img_data_worker,
                 resource_path_list,
+                [hr_img_height] * len(resource_path_list),
+                [hr_img_width] * len(resource_path_list),
                 [is_random_flip] * len(resource_path_list),
                 [is_random_crop] * len(resource_path_list),
                 [is_center_crop] * len(resource_path_list),
@@ -146,7 +161,13 @@ class DataLoader(object):
         return lr_img_list, hr_img_list
 
     def process_img_data_worker(
-        self, path, is_random_flip=True, is_random_crop=True, is_center_crop=False,
+        self,
+        path,
+        hr_img_height,
+        hr_img_width,
+        is_random_flip=True,
+        is_random_crop=True,
+        is_center_crop=False,
     ):
         """
         多线程处理图片工作函数
@@ -170,20 +191,18 @@ class DataLoader(object):
 
         # 随机剪裁
         if is_random_crop:
-            hr_img = tf.image.random_crop(
-                hr_img, [self.hr_img_height, self.hr_img_width, 3]
-            )
+            hr_img = tf.image.random_crop(hr_img, [hr_img_height, hr_img_width, 3])
 
         # 中心裁剪
         if is_center_crop:
-            offset_height = hr_img.shape[0] // 2 - self.hr_img_height // 2
-            offset_width = hr_img.shape[1] // 2 - self.hr_img_width // 2
+            offset_height = hr_img.shape[0] // 2 - hr_img_height // 2
+            offset_width = hr_img.shape[1] // 2 - hr_img_width // 2
             hr_img = tf.image.crop_to_bounding_box(
                 hr_img,
                 offset_height,
                 offset_width,
-                self.hr_img_height,
-                self.hr_img_width,
+                hr_img_height,
+                hr_img_width,
             )
 
         # 随机水平翻转
@@ -198,8 +217,8 @@ class DataLoader(object):
         lr_img = tf.image.resize(
             hr_img,
             [
-                self.hr_img_height // self.scale_factor,
-                self.hr_img_width // self.scale_factor,
+                hr_img_height // self.scale_factor,
+                hr_img_width // self.scale_factor,
             ],
             method=tf.image.ResizeMethod.BICUBIC,
         )

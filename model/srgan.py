@@ -34,11 +34,13 @@ class SRGAN(object):
         train_resource_path,
         test_resource_path,
         epochs,
-        init_epoch=0,
+        init_epoch=1,
         batch_size=4,
         scale_factor=4,
-        hr_img_height=128,
-        hr_img_width=128,
+        train_hr_img_height=128,
+        train_hr_img_width=128,
+        valid_hr_img_height=128,
+        valid_hr_img_width=128,
         rdb_num=16,
         max_workers=4,
         data_enhancement_factor=1,
@@ -56,11 +58,15 @@ class SRGAN(object):
         self.batch_size = batch_size  # 批次大小
         self.scale_factor = scale_factor  # 图片缩放比例
         self.lr_shape = (
-            hr_img_height // scale_factor,
-            hr_img_width // scale_factor,
+            train_hr_img_height // scale_factor,
+            train_hr_img_width // scale_factor,
             3,
         )  # 缩放后的图片尺寸
-        self.hr_shape = (hr_img_height, hr_img_width, 3)  # 原图尺寸
+        self.hr_shape = (train_hr_img_height, train_hr_img_width, 3)  # 原图尺寸
+        self.train_hr_img_height = train_hr_img_height
+        self.train_hr_img_width = train_hr_img_width
+        self.valid_hr_img_height = valid_hr_img_height
+        self.valid_hr_img_width = valid_hr_img_width
         self.rdb_num = rdb_num  # 残差块数量
         self.max_workers = max_workers  # 处理图片的最大线程数
         self.data_enhancement_factor = (
@@ -87,8 +93,10 @@ class SRGAN(object):
             self.train_resource_path,
             self.test_resource_path,
             self.batch_size,
-            self.hr_shape[0],
-            self.hr_shape[1],
+            self.train_hr_img_height,
+            self.train_hr_img_width,
+            self.valid_hr_img_height,
+            self.valid_hr_img_width,
             self.scale_factor,
             self.max_workers,
             self.data_enhancement_factor,
@@ -139,7 +147,7 @@ class SRGAN(object):
         """
         构建生成器
         """
-        lr_img = Input(shape=self.lr_shape)
+        lr_img = Input(shape=[None, None, 3])
 
         # 第一部分：Conv2D + Relu
         layer_1 = Conv2D(filters=64, kernel_size=9, strides=1, padding="same")(lr_img)
@@ -259,15 +267,18 @@ class SRGAN(object):
                 )
             )
 
-        epoch_list = []
-        per_loss_list = []
-        d_loss_list = []
-        d_acc_list = []
+        epoch_list = tf.constant([])
+        per_loss_list = tf.constant([], dtype=tf.float32)
+        d_loss_list = tf.constant([], dtype=tf.float32)
+        d_acc_list = tf.constant([], dtype=tf.float32)
+        batch_idx_count = tf.constant(
+            len(self.data_loader.train_data), dtype=tf.float32
+        )
         # 迭代训练
         for epoch in range(self.init_epoch, self.epochs + 1):
-            per_loss_batch_total = 0.0
-            d_loss_batch_total = 0.0
-            d_acc_batch_total = 0.0
+            per_loss_batch_total = tf.constant(0, dtype=tf.float32)
+            d_loss_batch_total = tf.constant(0, dtype=tf.float32)
+            d_acc_batch_total = tf.constant(0, dtype=tf.float32)
 
             # 更改学习率
             self.scheduler([self.combined, self.discriminator], epoch)
@@ -275,20 +286,23 @@ class SRGAN(object):
             # 加载训练数据集
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
                 # 构建标签数组
-                real_labels = tf.ones([lr_imgs.shape[0], 1])
-                fake_labels = tf.zeros([lr_imgs.shape[0], 1])
+                real_labels = tf.ones([lr_imgs.shape[0]])
+                fake_labels = tf.zeros([lr_imgs.shape[0]])
 
                 fake_imgs = self.generator.predict(lr_imgs)
 
                 # -------------------- #
                 # 训练判别器
                 # -------------------- #
-                # # self.discriminator.trainable = True
-                # fake_imgs = self.generator.predict(lr_imgs)
-                # d_real_loss = self.discriminator.train_on_batch(hr_imgs, real_labels)
-                # d_fake_loss = self.discriminator.train_on_batch(fake_imgs, fake_labels)
+                # self.discriminator.trainable = True
+                # d_real_loss, d_real_acc = self.discriminator.train_on_batch(
+                #     hr_imgs, real_labels
+                # )
+                # d_fake_loss, d_fake_acc = self.discriminator.train_on_batch(
+                #     fake_imgs, fake_labels
+                # )
                 # d_loss = 0.5 * tf.add(d_real_loss, d_fake_loss)
-                # d_acc = 0.0
+                # d_acc = 0.5 * tf.add(d_real_acc, d_fake_acc)
 
                 # 合并真假图片数据
                 x = tf.concat([hr_imgs, fake_imgs], axis=0)
@@ -305,12 +319,10 @@ class SRGAN(object):
                 hr_features = self.vgg.predict(hr_imgs)
 
                 # 训练生成器，此时不训练判别器
+                # self.discriminator.trainable = False
                 per_loss, g_loss, con_loss = self.combined.train_on_batch(
                     lr_imgs, [real_labels, hr_features]
                 )
-                # per_loss, con_loss, g_loss = self.combined.train_on_batch(
-                #     lr_imgs, [hr_imgs, real_labels]
-                # )
 
                 # 统计当前 batch 的总损失和总准确率
                 per_loss_batch_total += per_loss
@@ -320,27 +332,31 @@ class SRGAN(object):
                 # 输出日志
                 if (batch_idx == 0) or ((batch_idx + 1) % self.log_interval == 0):
                     self.logger.info(
-                        "epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, d_acc: %.2f%%, per_loss:%.4f, g_loss:%.4f, con_loss:%.4f"
+                        "epochs: [%d/%d], batches: [%d/%d], d_loss:%.4f, d_acc:%.2f%%, per_loss:%.4f, g_loss:%.4f, con_loss:%.4f"
                         % (
                             epoch,
                             self.epochs,
                             batch_idx + 1,
-                            len(self.data_loader.train_data),
+                            batch_idx_count,
                             d_loss,
-                            100 * d_acc,
+                            d_acc * 100,
                             per_loss,
                             g_loss,
                             con_loss,
                         )
                     )
 
-            epoch_list.append(epoch)
+            epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             # 计算当前 epoch 下的平均损失和平均准确率
-            per_loss_list.append(
-                per_loss_batch_total / len(self.data_loader.train_data)
+            per_loss_list = tf.concat(
+                [per_loss_list, [per_loss_batch_total / batch_idx_count]], axis=0
             )
-            d_loss_list.append(d_loss_batch_total / len(self.data_loader.train_data))
-            d_acc_list.append(d_acc_batch_total / len(self.data_loader.train_data))
+            d_loss_list = tf.concat(
+                [d_loss_list, [d_loss_batch_total / batch_idx_count]], axis=0
+            )
+            d_acc_list = tf.concat(
+                [d_acc_list, [d_acc_batch_total / batch_idx_count]], axis=0
+            )
 
             # 保存历史数据
             if (epoch) % self.save_history_interval == 0:
@@ -538,5 +554,15 @@ class SRGAN(object):
         fig.clear()
         plt.close(fig)
 
-    # def vgg_loss(self, y_true, y_pred):
-    #     return K.mean(K.square(self.vgg(y_pred) - self.vgg(y_true)))
+    # def validate_from_saved_weights(self, weights_path, lr_img):
+    #     """
+    #     从权重文件中加载模型，并进行验证
+    #     """
+    #     # 加载模型
+    #     self.generator.load_weights(weights_path)
+    #     sr_img = self.generator.predict(tf.expand_dims(lr_img, 0))
+    #     sr_img = tf.squeeze(sr_img, axis=0)
+    #     sr_img = tf.cast((sr_img + 1) * 127.5, dtype=tf.uint8).numpy()
+    #     # sr_img = tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8).numpy()
+
+    #     plt.imsave("./image/test_sr.png", sr_img)

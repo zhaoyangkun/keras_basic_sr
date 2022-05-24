@@ -36,11 +36,13 @@ class ESRGAN(object):
         train_resource_path,
         test_resource_path,
         epochs,
-        init_epoch=0,
+        init_epoch=1,
         batch_size=4,
         scale_factor=4,
-        hr_img_height=128,
-        hr_img_width=128,
+        train_hr_img_height=128,
+        train_hr_img_width=128,
+        valid_hr_img_height=128,
+        valid_hr_img_width=128,
         max_workers=4,
         data_enhancement_factor=1,
         log_interval=20,
@@ -59,11 +61,15 @@ class ESRGAN(object):
         self.batch_size = batch_size  # 批次大小
         self.scale_factor = scale_factor  # 图片缩放比例
         self.lr_shape = (
-            hr_img_height // scale_factor,
-            hr_img_width // scale_factor,
+            train_hr_img_height // scale_factor,
+            train_hr_img_width // scale_factor,
             3,
         )  # 缩放后的图片尺寸
-        self.hr_shape = (hr_img_height, hr_img_width, 3)  # 原图尺寸
+        self.hr_shape = (train_hr_img_height, train_hr_img_width, 3)  # 原图尺寸
+        self.train_hr_img_height = train_hr_img_height
+        self.train_hr_img_width = train_hr_img_width
+        self.valid_hr_img_height = valid_hr_img_height
+        self.valid_hr_img_width = valid_hr_img_width
         self.max_workers = max_workers  # 处理图片的最大线程数
         self.data_enhancement_factor = (
             data_enhancement_factor  # 数据增强因子，表示利用随机裁剪和水平翻转来扩充训练数据集的倍数，默认为 1（不进行扩充）
@@ -84,8 +90,10 @@ class ESRGAN(object):
             self.train_resource_path,
             self.test_resource_path,
             self.batch_size,
-            self.hr_shape[0],
-            self.hr_shape[1],
+            self.train_hr_img_height,
+            self.train_hr_img_width,
+            self.valid_hr_img_height,
+            self.valid_hr_img_width,
             self.scale_factor,
             self.max_workers,
             self.data_enhancement_factor,
@@ -230,7 +238,7 @@ class ESRGAN(object):
             return x
 
         # 低分辨率图像作为输入
-        lr_input = Input(shape=self.lr_shape)
+        lr_input = Input(shape=(None, None, 3))
 
         # RRDB 之前
         x_start = Conv2D(
@@ -538,20 +546,24 @@ class ESRGAN(object):
         训练模型
         """
         # 保存模型文件夹路径
-        save_models_dir_path = os.path.join(self.result_path, self.model_name, "models")
+        save_models_dir_path = os.path.join(
+            self.result_path, self.model_name, "models", "train"
+        )
         # 若保存模型文件夹不存在，则创建
         if not os.path.isdir(save_models_dir_path):
             os.makedirs(save_models_dir_path)
 
         # 保存图片文件夹路径
-        save_images_dir_path = os.path.join(self.result_path, self.model_name, "images")
+        save_images_dir_path = os.path.join(
+            self.result_path, self.model_name, "images", "train"
+        )
         # 若保存图片文件夹不存在，则创建
         if not os.path.isdir(save_images_dir_path):
             os.makedirs(save_images_dir_path)
 
         # 保存历史数据文件夹路径
         save_history_dir_path = os.path.join(
-            self.result_path, self.model_name, "history"
+            self.result_path, self.model_name, "history", "train"
         )
         # 若保存历史数据文件夹不存在，则创建
         if not os.path.isdir(save_history_dir_path):
@@ -594,12 +606,12 @@ class ESRGAN(object):
             # 加载训练数据集，并训练
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
                 g_loss, d_loss, psnr, ssim = self.train_step(lr_imgs, hr_imgs)
-                g_loss, d_loss, psnr, ssim = (
-                    g_loss.numpy().item(),
-                    d_loss.numpy().item(),
-                    psnr.numpy().item(),
-                    ssim.numpy().item(),
-                )
+                # g_loss, d_loss, psnr, ssim = (
+                #     g_loss.numpy().item(),
+                #     d_loss.numpy().item(),
+                #     psnr.numpy().item(),
+                #     ssim.numpy().item(),
+                # )
 
                 g_loss_batch_total += g_loss
                 d_loss_batch_total += d_loss
@@ -650,11 +662,53 @@ class ESRGAN(object):
 
             # 保存图片
             if epoch % self.save_images_interval == 0:
-                self.save_images(epoch, save_images_dir_path, 5)
+                self.save_images(epoch, save_images_dir_path, 3)
 
-            # 保存模型
+            # 评估并保存模型
             if epoch % self.save_models_interval == 0:
+                self.evaluate(epoch)
                 self.save_models(epoch, save_models_dir_path)
+
+    @tf.function
+    def valid_step(self, lr_img, hr_img):
+        """
+        单步验证
+        """
+        hr_generated = self.generator(lr_img, training=False)
+
+        # 将归一化区间从 [-1, 1] 转换到 [0, 1]
+        hr_img = (hr_img + 1) / 2
+        hr_generated = (hr_generated + 1) / 2
+
+        # 计算 psnr 和 ssim
+        psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
+        ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
+
+        return psnr, ssim
+
+    def evaluate(self, epoch):
+        """
+        评估模型
+        """
+        test_data_len = tf.constant(len(self.data_loader.test_data), dtype=tf.float32)
+        psnr_total = tf.constant(0, dtype=tf.float32)
+        ssim_total = tf.constant(0, dtype=tf.float32)
+        for (lr_imgs, hr_imgs) in self.data_loader.test_data:
+            psnr, ssim = self.valid_step(lr_imgs, hr_imgs)
+            # 统计 PSNR 和 SSIM
+            psnr_total += psnr
+            ssim_total += ssim
+        # 输出 SSIM 和 PSNR
+        print(
+            "evaluate %s, epochs: [%d/%d], PSNR: %.2f, SSIM: %.2f"
+            % (
+                self.model_name,
+                epoch,
+                self.epochs,
+                psnr_total / test_data_len,
+                ssim_total / test_data_len,
+            )
+        )
 
     def save_pretrain_history(
         self, epoch, save_history_dir_path, epoch_list, loss_list
