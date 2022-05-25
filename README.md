@@ -6,11 +6,11 @@
 
 - SRGAN（已实现）
 
-- ESRGAN（未实现）
+- ESRGAN（已经实现）
 
 - Real-ESRGAN（未实现）
 
-- Adm-AdderNet-ESRGAN（未实现）
+- RS-ESRGAN（未实现）
 
 <!-- ## 如何在本地运行
 

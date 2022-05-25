@@ -377,25 +377,25 @@ class ESRGAN(object):
 
         return fake_logit, real_logit
 
-    def pretrain_scheduler(self, models, mini_batches):
+    def pretrain_scheduler(self, optimizers, mini_batches):
         """
         预训练中动态修改学习率
         """
         # 每隔 200000 次 minibatch，学习率衰减一半
         if mini_batches % (200000) == 0:
-            for model in models:
-                lr = K.get_value(model.optimizer.lr)
-                K.set_value(model.optimizer.lr, lr * 0.5)
+            for optimizer in optimizers:
+                lr = K.get_value(optimizer.lr)
+                K.set_value(optimizer.lr, lr * 0.5)
                 print("pretrain lr changed to {}".format(lr * 0.5))
 
-    def scheduler(self, models, epoch):
+    def scheduler(self, optimizers, epoch):
         """
         动态修改学习率
         """
         if epoch in [50000, 100000, 200000, 300000]:
-            for model in models:
-                lr = K.get_value(model.optimizer.lr)
-                K.set_value(model.optimizer.lr, lr * 0.5)
+            for optimizer in optimizers:
+                lr = K.get_value(optimizer.lr)
+                K.set_value(optimizer.lr, lr * 0.5)
                 print("train lr changed to {}".format(lr * 0.5))
 
     @tf.function
@@ -450,7 +450,7 @@ class ESRGAN(object):
                 )
 
                 # 根据 mini-batch 数目动态修改学习率
-                self.pretrain_scheduler([self.generator], mini_batches)
+                self.pretrain_scheduler([self.pre_optimizer], mini_batches)
 
                 # 单步训练
                 loss = self.pretrain_step(lr_imgs, hr_imgs)
@@ -601,7 +601,7 @@ class ESRGAN(object):
             )
 
             # 修改学习率
-            self.scheduler([self.generator], epoch)
+            self.scheduler([self.gen_optimizer, self.dis_optimizer], epoch)
 
             # 加载训练数据集，并训练
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):

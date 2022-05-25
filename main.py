@@ -2,6 +2,7 @@ import json
 from model.srgan import SRGAN
 from model.esrgan import ESRGAN
 from util.toml import parse_toml
+
 # import os
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -49,14 +50,6 @@ def build_sr_model(config):
 if __name__ == "__main__":
     config = parse_toml("./config/config.toml")  # 读取 toml 配置文件
     sr_model = build_sr_model(config)  # 构建超分模型
-    
-    # sr_model.pretrain()  # 开始预训练
-    sr_model.train() # 开始训练
 
-    # # 读取图片
-    # lr_img = tf.io.read_file("./image/test_lr.png")
-    # # 解码
-    # lr_img = tf.image.decode_png(lr_img, channels=3)
-    # # 归一化
-    # lr_img = tf.cast(lr_img, tf.float32) / 127.5 - 1
-    # sr_model.validate_from_saved_weights("./saved/srgan/srgan_gen_weights.h5", lr_img)
+    sr_model.pretrain()  # 开始预训练
+    # sr_model.train() # 开始训练
