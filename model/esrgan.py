@@ -28,7 +28,7 @@ from util.layer import SpectralNorm
 from util.logger import create_logger
 
 
-class ESRGAN(object):
+class ESRGAN:
     def __init__(
         self,
         model_name,
@@ -251,7 +251,9 @@ class ESRGAN(object):
         x_start = LeakyReLU(0.5)(x_start)
 
         # RRDB
-        x = RRDB(x_start)
+        x = x_start
+        for _ in range(16):
+            x = RRDB(x)
 
         # RRDB 之后
         x = Conv2D(
@@ -280,7 +282,7 @@ class ESRGAN(object):
             3, kernel_size=3, strides=1, padding="same", activation="tanh"
         )(x)
 
-        model = Model(inputs=lr_input, outputs=hr_output)
+        model = Model(inputs=lr_input, outputs=hr_output, name="generator")
         model.summary()
 
         return model
@@ -322,8 +324,8 @@ class ESRGAN(object):
         x = Dropout(0.4)(x)
         x = Dense(1)(x)
 
-        model = Model(inputs=img, outputs=x)
-        # model.summary()
+        model = Model(inputs=img, outputs=x, name="discriminator")
+        model.summary()
 
         return model
 
@@ -382,11 +384,11 @@ class ESRGAN(object):
         预训练中动态修改学习率
         """
         # 每隔 200000 次 minibatch，学习率衰减一半
-        if mini_batches % (200000) == 0:
+        if mini_batches % (1000) == 0:
             for optimizer in optimizers:
                 lr = K.get_value(optimizer.lr)
                 K.set_value(optimizer.lr, lr * 0.5)
-                print("pretrain lr changed to {}".format(lr * 0.5))
+                self.logger.info("pretrain lr changed to {}".format(lr * 0.5))
 
     def scheduler(self, optimizers, epoch):
         """
@@ -396,7 +398,7 @@ class ESRGAN(object):
             for optimizer in optimizers:
                 lr = K.get_value(optimizer.lr)
                 K.set_value(optimizer.lr, lr * 0.5)
-                print("train lr changed to {}".format(lr * 0.5))
+                self.logger.info("train lr changed to {}".format(lr * 0.5))
 
     @tf.function
     def pretrain_step(self, lr_img, hr_img):
@@ -454,7 +456,7 @@ class ESRGAN(object):
 
                 # 单步训练
                 loss = self.pretrain_step(lr_imgs, hr_imgs)
-                loss = loss.numpy().item()
+                # loss = loss.numpy().item()
                 loss_batch_total += loss
 
                 # 输出日志
@@ -662,7 +664,7 @@ class ESRGAN(object):
 
             # 保存图片
             if epoch % self.save_images_interval == 0:
-                self.save_images(epoch, save_images_dir_path, 3)
+                self.save_images(epoch, save_images_dir_path, 5)
 
             # 评估并保存模型
             if epoch % self.save_models_interval == 0:
@@ -699,7 +701,7 @@ class ESRGAN(object):
             psnr_total += psnr
             ssim_total += ssim
         # 输出 SSIM 和 PSNR
-        print(
+        self.logger.info(
             "evaluate %s, epochs: [%d/%d], PSNR: %.2f, SSIM: %.2f"
             % (
                 self.model_name,

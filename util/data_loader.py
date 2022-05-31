@@ -6,7 +6,7 @@ import tensorflow as tf
 from tqdm import tqdm
 
 
-class DataLoader(object):
+class DataLoader:
     """
     数据加载类
     """
