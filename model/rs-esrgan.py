@@ -1,4 +1,3 @@
-import tensorflow as tf
 from tensorflow.keras.layers import (
     Add,
     Concatenate,
@@ -7,6 +6,7 @@ from tensorflow.keras.layers import (
     Lambda,
     LeakyReLU,
     PReLU,
+    UpSampling2D,
 )
 from tensorflow.keras.models import Model
 
@@ -64,6 +64,31 @@ class RESRGAN(ESRGAN):
         """
         构建生成器
         """
+
+        def upsample(x, number, method="nni", channels=64):
+            if method == "nni":
+                x = UpSampling2D(
+                    size=2,
+                    interpolation="nearest",
+                    name="up_sample_nni_" + str(number),
+                )(x)
+                x = RFB(x, in_channels=channels, out_channels=channels)
+                x = LeakyReLU(0.2)(x)
+            elif method == "spc":
+                x = Conv2D(
+                channels * 4,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+                name="up_sample_conv2d_" + str(number),
+            )(x)
+                x = self.subpixel_conv2d("up_sample_spc_" + str(number), 2)(x)
+                x = RFB(x, in_channels=channels, out_channels=channels)
+                x = LeakyReLU(0.2)(x)
+            else:
+                raise ValueError("Unsupported upsample method!")
+
+            return x
 
         def dense_block(input):
             x1 = Conv2D(
@@ -127,18 +152,137 @@ class RESRGAN(ESRGAN):
 
             return out
 
-        def upsample(x, number):
-            x = Conv2D(
-                256,
+        def RFB(input, in_channels=64, out_channels=32):
+            branch_channels = in_channels // 4
+
+            shortcut = Conv2D(out_channels, kernel_size=1, strides=1, padding="same")(
+                input
+            )
+            shortcut = Lambda(lambda x: x * 0.2)(shortcut)
+
+            # 分支 1
+            x_1 = Conv2D(branch_channels, kernel_size=1, strides=1, padding="same")(
+                input
+            )
+            x_1 = LeakyReLU(0.2)(x_1)
+            x_1 = Conv2D(branch_channels, kernel_size=3, strides=1, padding="same")(x_1)
+
+            # 分支 2
+            x_2 = Conv2D(branch_channels, kernel_size=1, strides=1, padding="same")(
+                input
+            )
+            x_2 = LeakyReLU(0.2)(x_2)
+            x_2 = Conv2D(
+                branch_channels, kernel_size=(1, 3), strides=1, padding="same"
+            )(x_2)
+            x_2 = LeakyReLU(0.2)(x_2)
+            x_2 = Conv2D(
+                branch_channels,
                 kernel_size=3,
                 strides=1,
+                dilation_rate=3,
                 padding="same",
-                name="up_sample_conv2d_" + str(number),
-            )(x)
-            x = self.subpixel_conv2d("up_sample_subpixel_" + str(number), 2)(x)
-            x = PReLU(shared_axes=[1, 2], name="up_sample_prelu_" + str(number))(x)
+            )(x_2)
 
-            return x
+            # 分支 3
+            x_3 = Conv2D(branch_channels, kernel_size=1, strides=1, padding="same")(
+                input
+            )
+            x_3 = LeakyReLU(0.2)(x_3)
+            x_3 = Conv2D(
+                branch_channels, kernel_size=(3, 1), strides=1, padding="same"
+            )(x_3)
+            x_3 = LeakyReLU(0.2)(x_3)
+            x_3 = Conv2D(
+                branch_channels,
+                kernel_size=3,
+                strides=1,
+                dilation_rate=3,
+                padding="same",
+            )(x_3)
+
+            # 分支 4
+            x_4 = Conv2D(
+                branch_channels // 2, kernel_size=1, strides=1, padding="same"
+            )(input)
+            x_4 = LeakyReLU(0.2)
+            x_4 = Conv2D(
+                (branch_channels // 4) * 3,
+                kernel_size=(1, 3),
+                strides=1,
+                padding="same",
+            )(x_4)
+            x_4 = LeakyReLU(0.2)
+            x_4 = Conv2D(
+                branch_channels, kernel_size=(1, 3), strides=1, padding="same"
+            )(x_4)
+            x_4 = LeakyReLU(0.2)
+            x_4 = Conv2D(
+                out_channels,
+                kernel_size=3,
+                strides=1,
+                dilation_rate=5,
+                padding="same",
+            )(x_4)
+
+            x_4 = Concatenate()([x_1, x_2, x_3, x_4])
+            x_4 = Conv2D(out_channels, kernel_size=1, strides=1, padding="same")(x_4)
+            output = Add()([x_4, shortcut])
+
+            return output
+
+        def RFDB(input, in_channels=64, growth_channels=32):
+            x_1 = RFB(
+                input,
+                in_channels=in_channels,
+                out_channels=growth_channels,
+            )
+            x_1 = LeakyReLU(0.2)(x_1)
+            x_1 = Concatenate()([input, x_1])
+
+            x_2 = RFB(
+                x_1,
+                in_channels=in_channels + growth_channels,
+                out_channels=growth_channels,
+            )
+            x_2 = LeakyReLU(0.2)(x_2)
+            x_2 = Concatenate()([input, x_1, x_2])
+
+            x_3 = RFB(
+                x_2,
+                in_channels=in_channels + growth_channels * 2,
+                out_channels=growth_channels,
+            )
+            x_3 = LeakyReLU(0.2)(x_3)
+            x_3 = Concatenate()([input, x_1, x_2, x_3])
+
+            x_4 = RFB(
+                x_3,
+                in_channels=in_channels + growth_channels * 3,
+                out_channels=growth_channels,
+            )
+            x_4 = LeakyReLU(0.2)(x_4)
+            x_4 = Concatenate()([input, x_1, x_2, x_3, x_4])
+
+            x_5 = RFB(
+                x_4,
+                in_channels=in_channels + growth_channels * 4,
+                out_channels=in_channels,
+            )
+            x_5 = Lambda(lambda x: x * 0.2)(x_5)
+            output = Add()([x_5, input])
+
+            return output
+
+        def RRFDB(input, input_channels=64, growth_channels=32):
+            x = RFDB(input, input_channels, growth_channels)
+            x = RFDB(x, input_channels, growth_channels)
+            x = RFDB(x, input_channels, growth_channels)
+
+            x = Lambda(lambda x: x * 0.2)(x)
+            output = Add()([x, input])
+
+            return output
 
         # 低分辨率图像作为输入
         lr_input = Input(shape=(None, None, 3))
@@ -158,20 +302,21 @@ class RESRGAN(ESRGAN):
         for _ in range(16):
             x = RRDB(x)
 
-        # RRDB 之后
-        x = Conv2D(
-            64,
-            kernel_size=3,
-            strides=1,
-            padding="same",
-            kernel_constraint=self.sn_layer,
-        )(x)
-        x = Lambda(lambda x: x * 0.2)(x)
+        # RRFDB
+        for _ in range(8):
+            x = RRFDB(x)
+
+        # RRFDB 之后
+        x = RFB(x, in_channels=64, out_channels=64)
         x = Add()([x, x_start])
 
-        # 上采样
+        # 交替使用最近邻域插值和亚像素卷积上采样方法
         for i in range(self.scale_factor // 2):
-            x = upsample(x, i + 1)  # 每次上采样，图像尺寸变为原来的两倍
+            # 每次上采样，图像尺寸变为原来的两倍
+            if (i + 1) % 2 == 0:
+                x = upsample(x, i + 1, method="spc", channels=64)  
+            else:
+                x = upsample(x, i + 1, method="nni", channels=64)
 
         x = Conv2D(
             64,
