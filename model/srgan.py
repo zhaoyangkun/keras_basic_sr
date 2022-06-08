@@ -36,6 +36,7 @@ class SRGAN(object):
         epochs,
         init_epoch=1,
         batch_size=4,
+        downsample_mode="bicubic",
         scale_factor=4,
         train_hr_img_height=128,
         train_hr_img_width=128,
@@ -56,6 +57,7 @@ class SRGAN(object):
         self.epochs = epochs  # 训练轮数
         self.init_epoch = init_epoch  # 初始化训练轮数
         self.batch_size = batch_size  # 批次大小
+        self.downsample_mode = downsample_mode  # 下采样模式
         self.scale_factor = scale_factor  # 图片缩放比例
         self.lr_shape = (
             train_hr_img_height // scale_factor,
@@ -93,6 +95,7 @@ class SRGAN(object):
             self.train_resource_path,
             self.test_resource_path,
             self.batch_size,
+            self.downsample_mode,
             self.train_hr_img_height,
             self.train_hr_img_width,
             self.valid_hr_img_height,

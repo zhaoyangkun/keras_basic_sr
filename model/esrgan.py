@@ -24,7 +24,7 @@ from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader
-from util.layer import SpectralNorm
+from util.layer import spectral_norm_conv2d
 from util.logger import create_logger
 
 
@@ -38,6 +38,7 @@ class ESRGAN:
         epochs,
         init_epoch=1,
         batch_size=4,
+        downsample_mode="bicubic",
         scale_factor=4,
         train_hr_img_height=128,
         train_hr_img_width=128,
@@ -59,6 +60,7 @@ class ESRGAN:
         self.epochs = epochs  # 训练轮数
         self.init_epoch = init_epoch  # 初始化训练轮数
         self.batch_size = batch_size  # 批次大小
+        self.downsample_mode = downsample_mode  # 下采样模式
         self.scale_factor = scale_factor  # 图片缩放比例
         self.lr_shape = (
             train_hr_img_height // scale_factor,
@@ -90,6 +92,7 @@ class ESRGAN:
             self.train_resource_path,
             self.test_resource_path,
             self.batch_size,
+            self.downsample_mode,
             self.train_hr_img_height,
             self.train_hr_img_width,
             self.valid_hr_img_height,
@@ -111,8 +114,9 @@ class ESRGAN:
         self.mse_loss = MeanSquaredError()
         self.mae_loss = MeanAbsoluteError()
 
-        # 谱归一化层
-        self.sn_layer = SpectralNorm() if use_sn else None
+        # # 谱归一化层
+        # self.sn_layer = SpectralNorm() if use_sn else None
+        self.use_sn = use_sn
 
         # 构建 vgg 模型
         self.vgg = self.build_vgg()
@@ -168,7 +172,6 @@ class ESRGAN:
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             x1 = LeakyReLU(0.2)(x1)
             x1 = Concatenate()([input, x1])
@@ -178,7 +181,6 @@ class ESRGAN:
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x1)
             x2 = LeakyReLU(0.2)(x2)
             x2 = Concatenate()([input, x1, x2])
@@ -188,7 +190,6 @@ class ESRGAN:
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x2)
             x3 = LeakyReLU(0.2)(x3)
             x3 = Concatenate()([input, x1, x2, x3])
@@ -198,7 +199,6 @@ class ESRGAN:
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x3)
             x4 = LeakyReLU(0.2)(x4)
             x4 = Concatenate()([input, x1, x2, x3, x4])
@@ -208,7 +208,6 @@ class ESRGAN:
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x4)
             x5 = Lambda(lambda x: x * 0.2)(x5)
             output = Add()([x5, input])
@@ -246,7 +245,6 @@ class ESRGAN:
             kernel_size=3,
             strides=1,
             padding="same",
-            kernel_constraint=self.sn_layer,
         )(lr_input)
         x_start = LeakyReLU(0.5)(x_start)
 
@@ -261,7 +259,6 @@ class ESRGAN:
             kernel_size=3,
             strides=1,
             padding="same",
-            kernel_constraint=self.sn_layer,
         )(x)
         x = Lambda(lambda x: x * 0.2)(x)
         x = Add()([x, x_start])
@@ -275,7 +272,6 @@ class ESRGAN:
             kernel_size=3,
             strides=1,
             padding="same",
-            kernel_constraint=self.sn_layer,
         )(x)
         x = LeakyReLU(0.2)(x)
         hr_output = Conv2D(
@@ -283,7 +279,7 @@ class ESRGAN:
         )(x)
 
         model = Model(inputs=lr_input, outputs=hr_output, name="generator")
-        model.summary()
+        # model.summary()
 
         return model
 
@@ -293,36 +289,46 @@ class ESRGAN:
         Args:
             filters (int, optional): 通道数. 默认为 64.
         """
-
-        def conv2d_block(input, filters, strides=1, bn=True):
-            x = Conv2D(
-                filters,
+        # 基本卷积块
+        def conv2d_block(input, filters, strides=1, bn=True, use_sn=True):
+            x = spectral_norm_conv2d(
+                input,
+                use_sn,
+                filters=filters,
                 kernel_size=3,
                 strides=strides,
                 padding="same",
-                kernel_constraint=self.sn_layer,
-            )(input)
+            )
             if bn:
                 x = BatchNormalization(momentum=0.8)(x)
             x = LeakyReLU(alpha=0.2)(x)
+
             return x
 
         # 高分辨率图像作为输入
         img = Input(shape=self.hr_shape)  # (h, w, 3)
-        x = conv2d_block(img, filters, bn=False)  # (h, w, filters)
-        x = conv2d_block(x, filters, strides=2)  # (h/2, w/2, filters)
-        x = conv2d_block(x, filters * 2)  # (h/2, w/2, filters * 2)
-        x = conv2d_block(x, filters * 2, strides=2)  # (h/4, w/4, filters * 2)
-        x = conv2d_block(x, filters * 4)  # (h/4, w/4, filters * 4)
-        x = conv2d_block(x, filters * 4, strides=2)  # (h/8, w/8, filters * 4)
-        x = conv2d_block(x, filters * 8)  # (h/8, w/8, filters * 8)
-        x = conv2d_block(x, filters * 8, strides=2)  # (h/16, w/16, filters * 8)
+        x = conv2d_block(img, filters, bn=False, use_sn=self.use_sn)  # (h, w, filters)
+        x = conv2d_block(
+            x, filters, strides=2, use_sn=self.use_sn
+        )  # (h/2, w/2, filters)
+        x = conv2d_block(x, filters * 2, use_sn=self.use_sn)  # (h/2, w/2, filters * 2)
+        x = conv2d_block(
+            x, filters * 2, strides=2, use_sn=self.use_sn
+        )  # (h/4, w/4, filters * 2)
+        x = conv2d_block(x, filters * 4, use_sn=self.use_sn)  # (h/4, w/4, filters * 4)
+        x = conv2d_block(
+            x, filters * 4, strides=2, use_sn=self.use_sn
+        )  # (h/8, w/8, filters * 4)
+        x = conv2d_block(x, filters * 8, use_sn=self.use_sn)  # (h/8, w/8, filters * 8)
+        x = conv2d_block(
+            x, filters * 8, strides=2, use_sn=self.use_sn
+        )  # (h/16, w/16, filters * 8)
         # x = Flatten()(x)
-        x = GlobalAveragePooling2D()(x)
-        x = Dense(filters * 16)(x)
+        x = GlobalAveragePooling2D()(x) # (filters * 8)
+        x = Dense(filters * 16)(x) # (filters * 16)
         x = LeakyReLU(alpha=0.2)(x)
         x = Dropout(0.4)(x)
-        x = Dense(1)(x)
+        x = Dense(1)(x) # (1)
 
         model = Model(inputs=img, outputs=x, name="discriminator")
         model.summary()

@@ -8,6 +8,7 @@ from tensorflow.keras.layers import (
     UpSampling2D,
 )
 from tensorflow.keras.models import Model
+from util.layer import spectral_norm_conv2d
 
 from model.esrgan import ESRGAN
 
@@ -22,6 +23,7 @@ class RS_ESRGAN(ESRGAN):
         epochs,
         init_epoch=1,
         batch_size=4,
+        downsample_mode="bicubic",
         scale_factor=4,
         train_hr_img_height=128,
         train_hr_img_width=128,
@@ -34,7 +36,7 @@ class RS_ESRGAN(ESRGAN):
         save_models_interval=50,
         save_history_interval=10,
         pretrain_model_path="",
-        use_sn=True,
+        use_sn=False,
     ):
         super().__init__(
             model_name,
@@ -44,6 +46,7 @@ class RS_ESRGAN(ESRGAN):
             epochs,
             init_epoch,
             batch_size,
+            downsample_mode,
             scale_factor,
             train_hr_img_height,
             train_hr_img_width,
@@ -64,27 +67,26 @@ class RS_ESRGAN(ESRGAN):
         构建生成器
         """
         # 构建上采样模块
-        def upsample(x, number, method="nni", channels=64):
-            # 最近邻域插值上采样
-            if method == "nni":
+        def upsample(x, number, method="bilinear", channels=64):
+            # 双线性插值上采样
+            if method == "bilinear":
                 x = UpSampling2D(
                     size=2,
-                    interpolation="nearest",
-                    name="up_sample_nni_" + str(number),
+                    interpolation="bilinear",
+                    name="up_sample_bilinear_" + str(number),
                 )(x)
                 x = RFB(x, in_channels=channels, out_channels=channels)
                 x = LeakyReLU(0.2)(x)
             # 亚像素卷积上采样
-            elif method == "spc":
+            elif method == "subpixel":
                 x = Conv2D(
                     channels * 4,
                     kernel_size=3,
                     strides=1,
                     padding="same",
                     name="up_sample_conv2d_" + str(number),
-                    kernel_constraint=self.sn_layer,
                 )(x)
-                x = self.subpixel_conv2d("up_sample_spc_" + str(number), 2)(x)
+                x = self.subpixel_conv2d("up_sample_subpixel_" + str(number), 2)(x)
                 x = RFB(x, in_channels=channels, out_channels=channels)
                 x = LeakyReLU(0.2)(x)
             else:
@@ -99,7 +101,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             x1 = LeakyReLU(0.2)(x1)
             x1 = Concatenate()([input, x1])
@@ -109,7 +110,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x1)
             x2 = LeakyReLU(0.2)(x2)
             x2 = Concatenate()([input, x1, x2])
@@ -119,7 +119,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x2)
             x3 = LeakyReLU(0.2)(x3)
             x3 = Concatenate()([input, x1, x2, x3])
@@ -129,7 +128,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x3)
             x4 = LeakyReLU(0.2)(x4)
             x4 = Concatenate()([input, x1, x2, x3, x4])
@@ -139,7 +137,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x4)
             x5 = Lambda(lambda x: x * 0.2)(x5)
             output = Add()([x5, input])
@@ -165,7 +162,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=1,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             shortcut = Lambda(lambda x: x * 0.2)(shortcut)
 
@@ -175,7 +171,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=1,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             x_1 = LeakyReLU(0.2)(x_1)
             x_1 = Conv2D(
@@ -183,7 +178,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=3,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_1)
 
             # 分支 2
@@ -192,7 +186,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=1,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             x_2 = LeakyReLU(0.2)(x_2)
             x_2 = Conv2D(
@@ -200,7 +193,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=(1, 3),
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_2)
             x_2 = LeakyReLU(0.2)(x_2)
             x_2 = Conv2D(
@@ -209,7 +201,6 @@ class RS_ESRGAN(ESRGAN):
                 strides=1,
                 dilation_rate=3,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_2)
 
             # 分支 3
@@ -218,7 +209,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=1,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             x_3 = LeakyReLU(0.2)(x_3)
             x_3 = Conv2D(
@@ -226,7 +216,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=(3, 1),
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_3)
             x_3 = LeakyReLU(0.2)(x_3)
             x_3 = Conv2D(
@@ -235,7 +224,6 @@ class RS_ESRGAN(ESRGAN):
                 strides=1,
                 dilation_rate=3,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_3)
 
             # 分支 4
@@ -244,7 +232,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=1,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(input)
             x_4 = LeakyReLU(0.2)(x_4)
             x_4 = Conv2D(
@@ -252,7 +239,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=(1, 3),
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_4)
             x_4 = LeakyReLU(0.2)(x_4)
             x_4 = Conv2D(
@@ -260,7 +246,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=(1, 3),
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_4)
             x_4 = LeakyReLU(0.2)(x_4)
             x_4 = Conv2D(
@@ -269,7 +254,6 @@ class RS_ESRGAN(ESRGAN):
                 strides=1,
                 dilation_rate=5,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_4)
 
             x_4 = Concatenate()([x_1, x_2, x_3, x_4])
@@ -278,7 +262,6 @@ class RS_ESRGAN(ESRGAN):
                 kernel_size=1,
                 strides=1,
                 padding="same",
-                kernel_constraint=self.sn_layer,
             )(x_4)
             output = Add()([x_4, shortcut])
 
@@ -348,37 +331,35 @@ class RS_ESRGAN(ESRGAN):
             kernel_size=3,
             strides=1,
             padding="same",
-            kernel_constraint=self.sn_layer,
         )(lr_input)
         x_start = LeakyReLU(0.5)(x_start)
 
         # RRDB
         x = x_start
-        for _ in range(16):
+        for _ in range(8):  # 默认为 16 块
             x = RRDB(x)
 
         # RRFDB
-        for _ in range(8):
+        for _ in range(4):  # 默认为 8 块
             x = RRFDB(x)
 
         # RRFDB 之后
         x = RFB(x, in_channels=64, out_channels=64)
         x = Add()([x, x_start])
 
-        # 交替使用最近邻域插值和亚像素卷积上采样方法
+        # 交替使用双线性插值和亚像素卷积上采样算法
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:
-                x = upsample(x, i + 1, method="spc", channels=64)
+                x = upsample(x, i + 1, method="subpixel", channels=64)
             else:
-                x = upsample(x, i + 1, method="nni", channels=64)
+                x = upsample(x, i + 1, method="bilinear", channels=64)
 
         x = Conv2D(
             64,
             kernel_size=3,
             strides=1,
             padding="same",
-            kernel_constraint=self.sn_layer,
         )(x)
         x = LeakyReLU(0.2)(x)
         hr_output = Conv2D(
@@ -386,6 +367,147 @@ class RS_ESRGAN(ESRGAN):
         )(x)
 
         model = Model(inputs=lr_input, outputs=hr_output, name="generator")
+        model.summary()
+
+        return model
+
+    def build_discriminator(self, filters=64):
+        input = Input(shape=self.hr_shape)  # (h, w, 3)
+
+        # 第一层卷积
+        x_0 = spectral_norm_conv2d(
+            input,
+            self.use_sn,
+            filters=filters,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+        )  # (h, w, filters)
+        x_0 = LeakyReLU(0.2)(x_0)
+
+        # 第二层卷积
+        x_1 = spectral_norm_conv2d(
+            x_0,
+            self.use_sn,
+            filters=filters * 2,
+            kernel_size=4,
+            strides=2,
+            padding="same",
+            use_bias=False,
+        )  # (h / 2, w / 2, filters * 2)
+        x_1 = LeakyReLU(0.2)(x_1)
+
+        # 第三层卷积
+        x_2 = spectral_norm_conv2d(
+            x_1,
+            self.use_sn,
+            filters=filters * 4,
+            kernel_size=4,
+            strides=2,
+            padding="same",
+            use_bias=False,
+        )  # (h / 4, w / 4, filters * 4)
+        x_2 = LeakyReLU(0.2)(x_2)
+
+        # 第四层卷积
+        x_3 = spectral_norm_conv2d(
+            x_2,
+            self.use_sn,
+            filters=filters * 8,
+            kernel_size=4,
+            strides=2,
+            padding="same",
+            use_bias=False,
+        )  # (h / 8, w / 8, filters * 8)
+        x_3 = LeakyReLU(0.2)(x_3)
+
+        # 上采样
+        x_3 = UpSampling2D(interpolation="bilinear")(x_3)  # (h /4, h / 4, filters * 8)
+
+        # 第五层卷积
+        x_4 = spectral_norm_conv2d(
+            x_3,
+            self.use_sn,
+            filters=filters * 4,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            use_bias=False,
+        )  # (h / 4, w / 4, filters * 4)
+        x_4 = LeakyReLU(0.2)(x_4)
+        # 跳跃连接
+        x_4 = Add()([x_4, x_2])
+
+        # 上采样
+        x_4 = UpSampling2D(interpolation="bilinear")(x_4)  # (h / 2, w / 2, filters * 4)
+
+        # 第六层卷积
+        x_5 = spectral_norm_conv2d(
+            x_4,
+            self.use_sn,
+            filters=filters * 2,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            use_bias=False,
+        )  # (h / 2, w / 2, filters * 2)
+        x_5 = LeakyReLU(0.2)(x_5)
+        # 跳跃连接
+        x_5 = Add()([x_5, x_1])
+
+        # 上采样
+        x_5 = UpSampling2D(interpolation="bilinear")(x_5)  # (h, w, filters * 2)
+
+        # 第七层卷积
+        x_6 = spectral_norm_conv2d(
+            x_5,
+            self.use_sn,
+            filters=filters,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            use_bias=False,
+        )  # (h, w, filters)
+        x_6 = LeakyReLU(0.2)(x_6)
+        # 跳跃连接
+        x_6 = Add()([x_6, x_0])
+
+        # 第八层卷积
+        out = spectral_norm_conv2d(
+            x_6,
+            self.use_sn,
+            filters=filters,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            use_bias=False,
+        )  # (h, w, filters)
+        out = LeakyReLU(0.2)(out)
+
+        # 第九层卷积
+        out = spectral_norm_conv2d(
+            out,
+            self.use_sn,
+            filters=filters,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            use_bias=False,
+        )  # (h, w, filters)
+        out = LeakyReLU(0.2)(out)
+
+        # 第十层卷积
+        out = spectral_norm_conv2d(
+            out,
+            self.use_sn,
+            filters=1,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            use_bias=False,
+        )  # (h, w, 1)
+
+        model = Model(inputs=input, outputs=out, name="discriminator")
         model.summary()
 
         return model

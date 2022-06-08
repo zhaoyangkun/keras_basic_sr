@@ -1,48 +1,124 @@
-model_name = "esrgan" # 模型名称
-
-[srgan]
-result_path = "./result"                                             # 结果保存路径
+# 数据集
+[dataset]
+downsample_mode = "bicubic"                                          # 下采样方式（"bicubic"、"second-order"）
 train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
 test_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
-epochs = 2000                                                        # 训练总轮数
-init_epoch = 1                                                       # 初始训练轮数
-batch_size = 4                                                       # 单次训练样本数
 scale_factor = 4                                                     # 下采样倍数
 train_hr_img_height = 128                                            # 训练过程中原图高度
 train_hr_img_width = 128                                             # 训练过程中原图宽度
-valid_hr_img_height = 384                                            # 验证过程中原图高度
-valid_hr_img_width = 384                                             # 验证过程中原图宽度
-rdb_num = 16                                                         # 残差块数目
+valid_hr_img_height = 128                                            # 验证过程中原图高度
+valid_hr_img_width = 128                                             # 验证过程中原图宽度
 max_workers = 2                                                      # 处理图片的最大线程数
 data_enhancement_factor = 1                                          # 数据增强因子
-log_interval = 20                                                    # 打印日志间隔
-save_images_interval = 1                                             # 保存图片间隔
-save_models_interval = 1                                             # 保存模型间隔
-save_history_interval = 1                                            # 保存历史数据（损失，准确率）间隔
 
-[esrgan]
-result_path = "./result"                                             # 结果保存路径
-train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
-test_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
-# train_resource_path = "/home/hh/zyk/datasets/DF_2K/train_HR" # 训练图片资源路径
-# test_resource_path = "/home/hh/zyk/datasets/DF_2K/valid_HR"  # 测试图片资源路径
-epochs = 5000               # 训练总轮数
-init_epoch = 1              # 初始训练轮数
-batch_size = 4              # 单次训练样本数
-scale_factor = 4            # 下采样倍数
-train_hr_img_height = 128   # 训练过程中原图高度
-train_hr_img_width = 128    # 训练过程中原图宽度
-valid_hr_img_height = 256   # 验证过程中原图高度
-valid_hr_img_width = 256    # 验证过程中原图宽度
-max_workers = 4             # 处理图片的最大线程数
-data_enhancement_factor = 1 # 数据增强因子
-log_interval = 20           # 打印日志间隔
-save_images_interval = 5    # 保存图片间隔
-save_models_interval = 5    # 保存模型间隔
-save_history_interval = 5   # 保存历史数据（损失，准确率）间隔
-pretrain_model_path = ""    # 预训练模型路径
-use_sn = false              # 是否使用谱归一化层
 
-[real-esrgan]
+# 模型
+[model]
+model_name = "rs-esrgan" # 模型名称（"srgan"、"esrgan"、"real-esrgan"、"rs-esrgan"）
 
-[adm-esrgan]
+# SRGAN
+[model.srgan]
+result_path = "./result"  # 结果保存路径
+epochs = 2000             # 训练总轮数
+init_epoch = 1            # 初始训练轮数
+batch_size = 4            # 单次训练样本数
+rdb_num = 16              # 残差块数目
+log_interval = 20         # 打印日志间隔
+save_images_interval = 1  # 保存图片间隔
+save_models_interval = 1  # 保存模型间隔
+save_history_interval = 1 # 保存历史数据（损失，准确率）间隔
+
+# ESRGAN
+[model.esrgan]
+result_path = "./result"  # 结果保存路径
+epochs = 5000             # 训练总轮数
+init_epoch = 1            # 初始训练轮数
+batch_size = 4            # 单次训练样本数
+log_interval = 20         # 打印日志间隔
+save_images_interval = 5  # 保存图片间隔
+save_models_interval = 5  # 保存模型间隔
+save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
+pretrain_model_path = ""  # 预训练模型路径
+use_sn = false            # 是否使用谱归一化层
+
+# Real-ESRGAN
+[model.real-esrgan]
+result_path = "./result"  # 结果保存路径
+batch_size = 4            # 单次训练样本数
+epochs = 5000             # 训练总轮数
+init_epoch = 1            # 初始训练轮数
+log_interval = 20         # 打印日志间隔
+save_images_interval = 5  # 保存图片间隔
+save_models_interval = 5  # 保存模型间隔
+save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
+pretrain_model_path = ""  # 预训练模型路径
+
+# RS-ESRGAN
+[model.rs-esrgan]
+result_path = "./result"  # 结果保存路径
+epochs = 5000             # 训练总轮数
+init_epoch = 1            # 初始训练轮数
+batch_size = 4            # 单次训练样本数
+log_interval = 20         # 打印日志间隔
+save_images_interval = 5  # 保存图片间隔
+save_models_interval = 5  # 保存模型间隔
+save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
+pretrain_model_path = ""  # 预训练模型路径
+use_sn = true             # 是否使用谱归一化层
+
+
+# 二阶退化模型
+[second-order-degradation]
+final_sinc_prob = 0.8
+
+[second-order-degradation.kernel_props_1]
+kernel_list = [
+  "iso",
+  "aniso",
+  "generalized_iso",
+  "generalized_aniso",
+  "plateau_iso",
+  "plateau_aniso",
+]
+kernel_prob = [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+sigma_x_range = [0.2, 3.0]
+sigma_y_range = [0.2, 3.0]
+betag_range = [0.5, 4.0]
+betap_range = [1, 2]
+sinc_prob = 0.1
+
+[second-order-degradation.kernel_props_2]
+kernel_list = [
+  "iso",
+  "aniso",
+  "generalized_iso",
+  "generalized_aniso",
+  "plateau_iso",
+  "plateau_aniso",
+]
+kernel_prob = [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
+sigma_x_range = [0.2, 1.5]
+sigma_y_range = [0.2, 1.5]
+betag_range = [0.5, 4.0]
+betap_range = [1, 2]
+sinc_prob = 0.1
+
+[second-order-degradation.feed_props_1]
+resize_prob = [0.2, 0.7, 0.1]
+resize_range = [0.15, 1.5]
+gray_noise_prob = 0.4
+gaussian_noise_prob = 0.5
+noise_range = [1, 30]
+poisson_scale_range = [0.05, 3.0]
+jpeg_range = [30, 95]
+blur_prob = 1.0
+
+[second-order-degradation.feed_props_2]
+resize_prob = [0.3, 0.4, 0.3]
+resize_range = [0.3, 1.2]
+gray_noise_prob = 0.4
+gaussian_noise_prob = 0.5
+noise_range = [1, 25]
+poisson_scale_range = [0.05, 2.5]
+jpeg_range = [30, 95]
+blur_prob = 0.8

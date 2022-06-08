@@ -1,10 +1,10 @@
 import json
 from model.srgan import SRGAN
 from model.esrgan import ESRGAN
+from model.rs_esrgan import RS_ESRGAN
 from util.toml import parse_toml
 
 # import os
-
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
@@ -13,15 +13,23 @@ def build_sr_model(config):
     构建超分模型
     """
     # 获取模型名称
-    model_name = config["model_name"].lower()
+    model_name = config["model"]["model_name"].lower()
+
     # 校验模型名称
     if model_name not in ["srgan", "esrgan", "real-esrgan", "rs-esrgan"]:
         raise ValueError(
-            "The model name is not corrected, Please Enter srgan, esrgan, real-esrgan or adm-esrgan"
+            "The model name is not corrected, Please Enter srgan, esrgan, real-esrgan or rs-esrgan"
         )
+
+    # 获取数据集配置
+    dataset_config = config["dataset"]
     # 获取模型配置
-    model_config = config[model_name]
+    model_config = config["model"][model_name]
     model_config["model_name"] = model_name
+
+    # 合并字典
+    model_config = {**dataset_config, **model_config}
+
     # 格式化输出配置信息
     print(
         json.dumps(
@@ -39,9 +47,9 @@ def build_sr_model(config):
         sr_model = SRGAN(**model_config)
     elif model_name == "esrgan":
         sr_model = ESRGAN(**model_config)
-    elif model_name == "real-esrgan":
-        pass
     elif model_name == "rs-esrgan":
+        sr_model = RS_ESRGAN(**model_config)
+    elif model_name == "real-esrgan":
         pass
 
     return sr_model
