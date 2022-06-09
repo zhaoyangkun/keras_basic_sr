@@ -250,7 +250,7 @@ class ESRGAN:
 
         # RRDB
         x = x_start
-        for _ in range(16):
+        for _ in range(8):  # 默认为 16 个
             x = RRDB(x)
 
         # RRDB 之后
@@ -324,11 +324,11 @@ class ESRGAN:
             x, filters * 8, strides=2, use_sn=self.use_sn
         )  # (h/16, w/16, filters * 8)
         # x = Flatten()(x)
-        x = GlobalAveragePooling2D()(x) # (filters * 8)
-        x = Dense(filters * 16)(x) # (filters * 16)
+        x = GlobalAveragePooling2D()(x)  # (filters * 8)
+        x = Dense(filters * 16)(x)  # (filters * 16)
         x = LeakyReLU(alpha=0.2)(x)
         x = Dropout(0.4)(x)
-        x = Dense(1)(x) # (1)
+        x = Dense(1)(x)  # (1)
 
         model = Model(inputs=img, outputs=x, name="discriminator")
         model.summary()
@@ -390,7 +390,7 @@ class ESRGAN:
         预训练中动态修改学习率
         """
         # 每隔 200000 次 minibatch，学习率衰减一半
-        if mini_batches % (1000) == 0:
+        if mini_batches % (200000) == 0:
             for optimizer in optimizers:
                 lr = K.get_value(optimizer.lr)
                 K.set_value(optimizer.lr, lr * 0.5)

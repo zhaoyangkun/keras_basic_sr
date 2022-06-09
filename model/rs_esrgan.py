@@ -61,6 +61,7 @@ class RS_ESRGAN(ESRGAN):
             pretrain_model_path,
             use_sn,
         )
+        self.loss_weights = {"percept": 1, "gen": 0.1, "pixel": 1}
 
     def build_generator(self):
         """
@@ -336,11 +337,11 @@ class RS_ESRGAN(ESRGAN):
 
         # RRDB
         x = x_start
-        for _ in range(8):  # 默认为 16 块
+        for _ in range(16):  # 默认为 16 块
             x = RRDB(x)
 
         # RRFDB
-        for _ in range(4):  # 默认为 8 块
+        for _ in range(8):  # 默认为 8 块
             x = RRFDB(x)
 
         # RRFDB 之后

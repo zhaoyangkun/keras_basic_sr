@@ -1,6 +1,6 @@
 # 数据集
 [dataset]
-downsample_mode = "bicubic"                                          # 下采样方式（"bicubic"、"second-order"）
+downsample_mode = "second-order"                                     # 下采样方式（"bicubic"、"second-order"）
 train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
 test_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
 scale_factor = 4                                                     # 下采样倍数
@@ -58,7 +58,7 @@ pretrain_model_path = ""  # 预训练模型路径
 result_path = "./result"  # 结果保存路径
 epochs = 5000             # 训练总轮数
 init_epoch = 1            # 初始训练轮数
-batch_size = 4            # 单次训练样本数
+batch_size = 2            # 单次训练样本数
 log_interval = 20         # 打印日志间隔
 save_images_interval = 5  # 保存图片间隔
 save_models_interval = 5  # 保存模型间隔
