@@ -10,7 +10,6 @@ from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import (
     Add,
     BatchNormalization,
-    Concatenate,
     Conv2D,
     Dense,
     Dropout,
@@ -18,13 +17,12 @@ from tensorflow.keras.layers import (
     Input,
     Lambda,
     LeakyReLU,
-    PReLU,
 )
 from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader
-from util.layer import spectral_norm_conv2d
+from util.layer import RRDB, spectral_norm_conv2d, upsample
 from util.logger import create_logger
 
 
@@ -126,29 +124,6 @@ class ESRGAN:
         # 构建判别器
         self.discriminator = self.build_discriminator()
 
-    def subpixel_conv2d(self, name, scale=2):
-        """亚像素卷积层
-
-        Args:
-            name (str): 名称
-            scale (int, optional): 缩放比例. 默认为 2.
-        """
-
-        def subpixel_shape(input_shape):
-            dims = [
-                input_shape[0],
-                None if input_shape[1] is None else input_shape[1] * scale,
-                None if input_shape[2] is None else input_shape[2] * scale,
-                int(input_shape[3] / (scale**2)),
-            ]
-            output_shape = tuple(dims)
-            return output_shape
-
-        def subpixel(x):
-            return tf.nn.depth_to_space(x, scale)
-
-        return Lambda(subpixel, output_shape=subpixel_shape, name=name)
-
     def build_vgg(self):
         """
         构建 vgg 模型
@@ -164,77 +139,6 @@ class ESRGAN:
         """
         构建生成器
         """
-
-        def dense_block(input):
-            x1 = Conv2D(
-                64,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-            )(input)
-            x1 = LeakyReLU(0.2)(x1)
-
-            x2 = Concatenate()([input, x1])
-            x2 = Conv2D(
-                64,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-            )(x2)
-            x2 = LeakyReLU(0.2)(x2)
-
-            x3 = Concatenate()([input, x1, x2])
-            x3 = Conv2D(
-                64,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-            )(x3)
-            x3 = LeakyReLU(0.2)(x3)
-
-            x4 = Concatenate()([input, x1, x2, x3])
-            x4 = Conv2D(
-                64,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-            )(x4)
-            x4 = LeakyReLU(0.2)(x4)
-
-            x5 = Concatenate()([input, x1, x2, x3, x4])
-            x5 = Conv2D(
-                64,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-            )(x5)
-            x5 = Lambda(lambda x: x * 0.2)(x5)
-            output = Add()([x5, input])
-
-            return output
-
-        def RRDB(input):
-            x = dense_block(input)
-            x = dense_block(x)
-            x = dense_block(x)
-            x = Lambda(lambda x: x * 0.2)(x)
-            out = Add()([x, input])
-
-            return out
-
-        def upsample(x, number):
-            x = Conv2D(
-                256,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-                name="up_sample_conv2d_" + str(number),
-            )(x)
-            x = self.subpixel_conv2d("up_sample_subpixel_" + str(number), 2)(x)
-            x = PReLU(shared_axes=[1, 2], name="up_sample_prelu_" + str(number))(x)
-
-            return x
-
         # 低分辨率图像作为输入
         lr_input = Input(shape=(None, None, 3))
 
@@ -264,7 +168,7 @@ class ESRGAN:
 
         # 上采样
         for i in range(self.scale_factor // 2):
-            x = upsample(x, i + 1)  # 每次上采样，图像尺寸变为原来的两倍
+            x = upsample(x, i + 1, 64)  # 每次上采样，图像尺寸变为原来的两倍
 
         x = Conv2D(
             64,
@@ -278,7 +182,7 @@ class ESRGAN:
         )(x)
 
         model = Model(inputs=lr_input, outputs=hr_output, name="generator")
-        # model.summary()
+        model.summary()
 
         return model
 
