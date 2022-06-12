@@ -467,7 +467,7 @@ class ESRGAN:
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
                     self.logger.info(
-                        "mode: [pretrain], epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
+                        "mode: pretrain, epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
                         % (
                             epoch,
                             self.epochs,
@@ -628,7 +628,7 @@ class ESRGAN:
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
                     self.logger.info(
-                        "mode: [train], epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, g_loss: %.4f, psnr: %.2f, ssim: %.2f"
+                        "mode: train, epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, g_loss: %.4f, psnr: %.2f, ssim: %.2f"
                         % (
                             epoch,
                             self.epochs,
