@@ -114,8 +114,7 @@ class ESRGAN:
         self.mse_loss = MeanSquaredError()
         self.mae_loss = MeanAbsoluteError()
 
-        # # 谱归一化层
-        # self.sn_layer = SpectralNorm() if use_sn else None
+        # 谱归一化
         self.use_sn = use_sn
 
         # 构建 vgg 模型
@@ -174,41 +173,41 @@ class ESRGAN:
                 padding="same",
             )(input)
             x1 = LeakyReLU(0.2)(x1)
-            x1 = Concatenate()([input, x1])
 
+            x2 = Concatenate()([input, x1])
             x2 = Conv2D(
                 64,
                 kernel_size=3,
                 strides=1,
                 padding="same",
-            )(x1)
+            )(x2)
             x2 = LeakyReLU(0.2)(x2)
-            x2 = Concatenate()([input, x1, x2])
 
+            x3 = Concatenate()([input, x1, x2])
             x3 = Conv2D(
                 64,
                 kernel_size=3,
                 strides=1,
                 padding="same",
-            )(x2)
+            )(x3)
             x3 = LeakyReLU(0.2)(x3)
-            x3 = Concatenate()([input, x1, x2, x3])
 
+            x4 = Concatenate()([input, x1, x2, x3])
             x4 = Conv2D(
                 64,
                 kernel_size=3,
                 strides=1,
                 padding="same",
-            )(x3)
+            )(x4)
             x4 = LeakyReLU(0.2)(x4)
-            x4 = Concatenate()([input, x1, x2, x3, x4])
 
+            x5 = Concatenate()([input, x1, x2, x3, x4])
             x5 = Conv2D(
                 64,
                 kernel_size=3,
                 strides=1,
                 padding="same",
-            )(x4)
+            )(x5)
             x5 = Lambda(lambda x: x * 0.2)(x5)
             output = Add()([x5, input])
 
@@ -250,7 +249,7 @@ class ESRGAN:
 
         # RRDB
         x = x_start
-        for _ in range(8):  # 默认为 16 个
+        for _ in range(6):  # 默认为 16 个
             x = RRDB(x)
 
         # RRDB 之后
@@ -468,7 +467,7 @@ class ESRGAN:
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
                     self.logger.info(
-                        "epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
+                        "mode: [pretrain], epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
                         % (
                             epoch,
                             self.epochs,
@@ -629,7 +628,7 @@ class ESRGAN:
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
                     self.logger.info(
-                        "epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, g_loss: %.4f, psnr: %.2f, ssim: %.2f"
+                        "mode: [train], epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, g_loss: %.4f, psnr: %.2f, ssim: %.2f"
                         % (
                             epoch,
                             self.epochs,
@@ -728,7 +727,7 @@ class ESRGAN:
 
         # 绘制损失曲线
         ax = plt.subplot(1, 1, 1)
-        ax.set_title("Loss")
+        ax.set_title("Pretrain Loss")
         (line,) = ax.plot(
             epoch_list, loss_list, color="deepskyblue", marker=".", label="loss"
         )
@@ -764,7 +763,7 @@ class ESRGAN:
 
         # 绘制损失曲线
         ax_1 = plt.subplot(2, 1, 1)
-        ax_1.set_title("Loss")
+        ax_1.set_title("Train Loss")
         (line_1,) = ax_1.plot(
             epoch_list, g_loss_list, color="deepskyblue", marker=".", label="g_loss"
         )

@@ -8,7 +8,7 @@ train_hr_img_height = 128                                            # 训练过
 train_hr_img_width = 128                                             # 训练过程中原图宽度
 valid_hr_img_height = 128                                            # 验证过程中原图高度
 valid_hr_img_width = 128                                             # 验证过程中原图宽度
-max_workers = 2                                                      # 处理图片的最大线程数
+max_workers = 4                                                      # 处理图片的最大线程数
 data_enhancement_factor = 1                                          # 数据增强因子
 
 
@@ -58,8 +58,8 @@ pretrain_model_path = ""  # 预训练模型路径
 result_path = "./result"  # 结果保存路径
 epochs = 5000             # 训练总轮数
 init_epoch = 1            # 初始训练轮数
-batch_size = 2            # 单次训练样本数
-log_interval = 20         # 打印日志间隔
+batch_size = 4            # 单次训练样本数
+log_interval = 50         # 打印日志间隔
 save_images_interval = 5  # 保存图片间隔
 save_models_interval = 5  # 保存模型间隔
 save_history_interval = 5 # 保存历史数据（损失，准确率）间隔

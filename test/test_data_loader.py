@@ -27,10 +27,10 @@ dataloader = DataLoader(
 # plt.suptitle("test_data")
 # dataloader.test_data.skip(5).unbatch().take(6)
 
-take_num = 3
+take_num = 5
 # 绘图
 fig, axs = plt.subplots(take_num, 2)
-for i, (lr_img, hr_img) in enumerate(dataloader.train_data.unbatch().take(take_num)):
+for i, (lr_img, hr_img) in enumerate(dataloader.test_data.unbatch().take(take_num)):
     # 反归一化
     lr_img, hr_img = (
         tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8),

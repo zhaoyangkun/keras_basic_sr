@@ -68,9 +68,18 @@ class RS_ESRGAN(ESRGAN):
         构建生成器
         """
         # 构建上采样模块
-        def upsample(x, number, method="bilinear", channels=64):
+        def upsample(x, number, method="nearest", channels=64):
+            # 最近邻域插值上采样
+            if method == "nearest":
+                x = UpSampling2D(
+                    size=2,
+                    interpolation="nearest",
+                    name="up_sample_nearest_" + str(number),
+                )(x)
+                x = RFB(x, in_channels=channels, out_channels=channels)
+                x = LeakyReLU(0.2)(x)
             # 双线性插值上采样
-            if method == "bilinear":
+            elif method == "bilinear":
                 x = UpSampling2D(
                     size=2,
                     interpolation="bilinear",
@@ -98,47 +107,47 @@ class RS_ESRGAN(ESRGAN):
         # 构建 dense block
         def dense_block(input):
             x1 = Conv2D(
-                64,
+                32,
                 kernel_size=3,
                 strides=1,
                 padding="same",
             )(input)
             x1 = LeakyReLU(0.2)(x1)
-            x1 = Concatenate()([input, x1])
 
+            x2 = Concatenate()([input, x1])
             x2 = Conv2D(
-                64,
-                kernel_size=3,
-                strides=1,
-                padding="same",
-            )(x1)
-            x2 = LeakyReLU(0.2)(x2)
-            x2 = Concatenate()([input, x1, x2])
-
-            x3 = Conv2D(
-                64,
+                32,
                 kernel_size=3,
                 strides=1,
                 padding="same",
             )(x2)
-            x3 = LeakyReLU(0.2)(x3)
-            x3 = Concatenate()([input, x1, x2, x3])
+            x2 = LeakyReLU(0.2)(x2)
 
-            x4 = Conv2D(
-                64,
+            x3 = Concatenate()([input, x1, x2])
+            x3 = Conv2D(
+                32,
                 kernel_size=3,
                 strides=1,
                 padding="same",
             )(x3)
-            x4 = LeakyReLU(0.2)(x4)
-            x4 = Concatenate()([input, x1, x2, x3, x4])
+            x3 = LeakyReLU(0.2)(x3)
 
+            x4 = Concatenate()([input, x1, x2, x3])
+            x4 = Conv2D(
+                32,
+                kernel_size=3,
+                strides=1,
+                padding="same",
+            )(x4)
+            x4 = LeakyReLU(0.2)(x4)
+
+            x5 = Concatenate()([input, x1, x2, x3, x4])
             x5 = Conv2D(
                 64,
                 kernel_size=3,
                 strides=1,
                 padding="same",
-            )(x4)
+            )(x5)
             x5 = Lambda(lambda x: x * 0.2)(x5)
             output = Add()([x5, input])
 
@@ -250,21 +259,21 @@ class RS_ESRGAN(ESRGAN):
             )(x_4)
             x_4 = LeakyReLU(0.2)(x_4)
             x_4 = Conv2D(
-                out_channels,
+                branch_channels,
                 kernel_size=3,
                 strides=1,
                 dilation_rate=5,
                 padding="same",
             )(x_4)
 
-            x_4 = Concatenate()([x_1, x_2, x_3, x_4])
-            x_4 = Conv2D(
+            output = Concatenate()([x_1, x_2, x_3, x_4])
+            output = Conv2D(
                 out_channels,
                 kernel_size=1,
                 strides=1,
                 padding="same",
-            )(x_4)
-            output = Add()([x_4, shortcut])
+            )(output)
+            output = Add()([output, shortcut])
 
             return output
 
@@ -276,34 +285,34 @@ class RS_ESRGAN(ESRGAN):
                 out_channels=growth_channels,
             )
             x_1 = LeakyReLU(0.2)(x_1)
-            x_1 = Concatenate()([input, x_1])
 
+            x_2 = Concatenate()([input, x_1])
             x_2 = RFB(
-                x_1,
+                x_2,
                 in_channels=in_channels + growth_channels,
                 out_channels=growth_channels,
             )
             x_2 = LeakyReLU(0.2)(x_2)
-            x_2 = Concatenate()([input, x_1, x_2])
 
+            x_3 = Concatenate()([input, x_1, x_2])
             x_3 = RFB(
-                x_2,
+                x_3,
                 in_channels=in_channels + growth_channels * 2,
                 out_channels=growth_channels,
             )
             x_3 = LeakyReLU(0.2)(x_3)
-            x_3 = Concatenate()([input, x_1, x_2, x_3])
 
+            x_4 = Concatenate()([input, x_1, x_2, x_3])
             x_4 = RFB(
-                x_3,
+                x_4,
                 in_channels=in_channels + growth_channels * 3,
                 out_channels=growth_channels,
             )
             x_4 = LeakyReLU(0.2)(x_4)
-            x_4 = Concatenate()([input, x_1, x_2, x_3, x_4])
 
+            x_5 = Concatenate()([input, x_1, x_2, x_3, x_4])
             x_5 = RFB(
-                x_4,
+                x_5,
                 in_channels=in_channels + growth_channels * 4,
                 out_channels=in_channels,
             )
@@ -337,24 +346,24 @@ class RS_ESRGAN(ESRGAN):
 
         # RRDB
         x = x_start
-        for _ in range(16):  # 默认为 16 块
+        for _ in range(6):  # 默认为 16 块
             x = RRDB(x)
 
         # RRFDB
-        for _ in range(8):  # 默认为 8 块
+        for _ in range(4):  # 默认为 8 块
             x = RRFDB(x)
 
         # RRFDB 之后
         x = RFB(x, in_channels=64, out_channels=64)
         x = Add()([x, x_start])
 
-        # 交替使用双线性插值和亚像素卷积上采样算法
+        # 交替使用最近领域插值和亚像素卷积上采样算法
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:
                 x = upsample(x, i + 1, method="subpixel", channels=64)
             else:
-                x = upsample(x, i + 1, method="bilinear", channels=64)
+                x = upsample(x, i + 1, method="nearest", channels=64)
 
         x = Conv2D(
             64,

@@ -314,7 +314,7 @@ class DataLoader:
             usm_img = usm_sharpener.sharp(hr_img)
 
             # 获取最初图像的数量、高和宽
-            batch, ori_height, ori_width, _ = tf.shape(usm_img)
+            batch, ori_height, ori_width, _ = tf.shape(hr_img)
 
             # ----------------------- 第一阶段退化 ----------------------- #
             lr_img = self.degradation(
