@@ -1,6 +1,6 @@
 from tensorflow.keras.layers import Add, Conv2D, Input, LeakyReLU, UpSampling2D
 from tensorflow.keras.models import Model
-from util.layer import RFB, RRDB, RRFDB, spectral_norm_conv2d, upsample
+from util.layer import RFB, RRDB, RRFDB, spectral_norm_conv2d, upsample_rfb
 
 from model.esrgan import ESRGAN
 
@@ -88,9 +88,9 @@ class RS_ESRGAN(ESRGAN):
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:
-                x = upsample(x, i + 1, method="subpixel", channels=64)
+                x = upsample_rfb(x, i + 1, method="subpixel", channels=64)
             else:
-                x = upsample(x, i + 1, method="nearest", channels=64)
+                x = upsample_rfb(x, i + 1, method="nearest", channels=64)
 
         x = Conv2D(
             64,
