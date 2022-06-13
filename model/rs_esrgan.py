@@ -73,11 +73,11 @@ class RS_ESRGAN(ESRGAN):
 
         # RRDB
         x = x_start
-        for _ in range(6):  # 默认为 16 块
+        for _ in range(4):  # 默认为 16 块
             x = RRDB(x)
 
         # RRFDB
-        for _ in range(4):  # 默认为 8 块
+        for _ in range(2):  # 默认为 8 块
             x = RRFDB(x)
 
         # RRFDB 之后
