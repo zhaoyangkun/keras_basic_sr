@@ -1,4 +1,5 @@
 import json
+from model.real_esrgan import RealESRGAN
 from model.srgan import SRGAN
 from model.esrgan import ESRGAN
 from model.rs_esrgan import RS_ESRGAN
@@ -50,7 +51,7 @@ def build_sr_model(config):
     elif model_name == "rs-esrgan":
         sr_model = RS_ESRGAN(**model_config)
     elif model_name == "real-esrgan":
-        pass
+        sr_model = RealESRGAN(**model_config)
 
     return sr_model
 
@@ -59,5 +60,5 @@ if __name__ == "__main__":
     config = parse_toml("./config/config.toml")  # 读取 toml 配置文件
     sr_model = build_sr_model(config)  # 构建超分模型
 
-    sr_model.pretrain()  # 开始预训练
-    # sr_model.train() # 开始训练
+    # sr_model.pretrain()  # 开始预训练
+    sr_model.train() # 开始训练

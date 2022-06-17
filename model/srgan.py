@@ -18,6 +18,7 @@ from tensorflow.keras.layers import (
 )
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import mixed_precision
 from util.data_loader import DataLoader
 from util.logger import create_logger
 
@@ -49,6 +50,7 @@ class SRGAN(object):
         save_images_interval=10,
         save_models_interval=50,
         save_history_interval=10,
+        use_mixed_float=False,
     ):
         self.model_name = model_name  # 模型名称
         self.result_path = result_path  # 结果保存路径
@@ -78,6 +80,7 @@ class SRGAN(object):
         self.save_images_interval = save_images_interval  # 保存图片迭代间隔
         self.save_models_interval = save_models_interval  # 保存模型迭代间隔
         self.save_history_interval = save_history_interval  # 保存历史数据迭代间隔
+        self.use_mixed_float = use_mixed_float  # 是否使用混合精度
 
         # 创建日志记录器
         log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
@@ -86,6 +89,9 @@ class SRGAN(object):
 
         # 创建优化器
         self.optimizer = Adam(0.0002, 0.5)
+
+        # 检查是否使用混合精度
+        self.check_mixed()
 
         # 创建 vgg 模型
         self.vgg = self.build_vgg()
@@ -119,6 +125,13 @@ class SRGAN(object):
         self.combined = self.build_combined()
         # 输出联合模型网络结构
         self.combined.summary()
+
+    def check_mixed(self):
+        """
+        检查是否使用混合精度
+        """
+        if self.use_mixed_float:
+            mixed_precision.set_global_policy("mixed_float16")
 
     def build_combined(self):
         """

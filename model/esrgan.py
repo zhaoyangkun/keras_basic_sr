@@ -21,6 +21,7 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras import mixed_precision
 from util.data_loader import DataLoader
 from util.layer import RRDB, spectral_norm_conv2d, upsample
 from util.logger import create_logger
@@ -50,6 +51,7 @@ class ESRGAN:
         save_history_interval=10,
         pretrain_model_path="",
         use_sn=False,
+        use_mixed_float=False,
     ):
         self.model_name = model_name  # 模型名称
         self.result_path = result_path  # 结果保存路径
@@ -79,6 +81,7 @@ class ESRGAN:
         self.save_models_interval = save_models_interval  # 保存模型迭代间隔
         self.save_history_interval = save_history_interval  # 保存历史数据迭代间隔
         self.pretrain_model_path = pretrain_model_path  # 预训练模型路径
+        self.use_mixed_float = use_mixed_float  # 是否使用混合精度
 
         # 创建日志记录器
         log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
@@ -105,6 +108,9 @@ class ESRGAN:
         self.gen_optimizer = Adam(1e-4)
         self.dis_optimizer = Adam(1e-4)
 
+        # 检查是否使用混合精度
+        self.check_mixed()
+
         # 损失权重
         self.loss_weights = {"percept": 1, "gen": 5e-3, "pixel": 1e-2}
 
@@ -123,6 +129,16 @@ class ESRGAN:
 
         # 构建判别器
         self.discriminator = self.build_discriminator()
+
+    def check_mixed(self):
+        """
+        检查是否使用混合精度
+        """
+        if self.use_mixed_float:
+            mixed_precision.set_global_policy("mixed_float16")
+            self.pre_optimizer = mixed_precision.LossScaleOptimizer(self.pre_optimizer)
+            self.gen_optimizer = mixed_precision.LossScaleOptimizer(self.gen_optimizer)
+            self.dis_optimizer = mixed_precision.LossScaleOptimizer(self.dis_optimizer)
 
     def build_vgg(self):
         """
@@ -317,8 +333,15 @@ class ESRGAN:
         with tf.GradientTape() as tape:
             hr_generated = self.generator(lr_img, training=True)
             loss = self.mae_loss(hr_img, hr_generated)
-
-        gradients = tape.gradient(loss, self.generator.trainable_variables)
+            if self.use_mixed_float:
+                scaled_loss = self.pre_optimizer.get_scaled_loss(loss)
+        if self.use_mixed_float:
+            scaled_gradients = tape.gradient(
+                scaled_loss, self.generator.trainable_variables
+            )
+            gradients = self.pre_optimizer.get_unscaled_gradients(scaled_gradients)
+        else:
+            gradients = tape.gradient(loss, self.generator.trainable_variables)
         self.pre_optimizer.apply_gradients(
             zip(gradients, self.generator.trainable_variables)
         )
@@ -429,19 +452,51 @@ class ESRGAN:
                 + self.loss_weights["pixel"] * pixel_loss
             )
 
+            # 若使用混合精度
+            if self.use_mixed_float:
+                # 将损失值乘以损失标度值
+                scaled_disc_loss = self.dis_optimizer.get_scaled_loss(
+                    discriminator_loss
+                )
+                scaled_gen_loss = self.gen_optimizer.get_scaled_loss(
+                    generator_total_loss
+                )
+
+                # 将数值类型从 float16 转换为 float32
+                hr_generated = tf.cast(hr_generated, dtype=tf.float32)
+                generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
+                discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
+
             # 将归一化区间从 [-1, 1] 转换到 [0, 1]
             hr_img = (hr_img + 1) / 2
             hr_generated = (hr_generated + 1) / 2
+
             # 计算 psnr 和 ssim
             psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
             ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
-        # 计算梯度
-        gradients_generator = gen_tape.gradient(
-            generator_total_loss, self.generator.trainable_variables
-        )
-        gradients_discriminator = disc_tape.gradient(
-            discriminator_loss, self.discriminator.trainable_variables
-        )
+
+        # 若使用混合精度，将梯度除以损失标度
+        if self.use_mixed_float:
+            scaled_gen_gradients = gen_tape.gradient(
+                scaled_gen_loss, self.generator.trainable_variables
+            )
+            scaled_dis_gradients = disc_tape.gradient(
+                scaled_disc_loss, self.discriminator.trainable_variables
+            )
+            gradients_generator = self.gen_optimizer.get_unscaled_gradients(
+                scaled_gen_gradients
+            )
+            gradients_discriminator = self.dis_optimizer.get_unscaled_gradients(
+                scaled_dis_gradients
+            )
+        # 不使用混合精度，直接获取梯度
+        else:
+            gradients_generator = gen_tape.gradient(
+                generator_total_loss, self.generator.trainable_variables
+            )
+            gradients_discriminator = disc_tape.gradient(
+                discriminator_loss, self.discriminator.trainable_variables
+            )
         # 更新优化器参数
         self.gen_optimizer.apply_gradients(
             zip(gradients_generator, self.generator.trainable_variables)
@@ -586,6 +641,9 @@ class ESRGAN:
         单步验证
         """
         hr_generated = self.generator(lr_img, training=False)
+        if self.use_mixed_float:
+            # 将数值类型从 float16 转换为 float32
+            hr_generated = tf.cast(hr_generated, dtype=tf.float32)
 
         # 将归一化区间从 [-1, 1] 转换到 [0, 1]
         hr_img = (hr_img + 1) / 2
@@ -731,12 +789,12 @@ class ESRGAN:
             axs[i, 0].imshow(lr_img)
             axs[i, 0].axis("off")
             if i == 0:
-                axs[i, 0].set_title("Bicubic")
+                axs[i, 0].set_title(self.downsample_mode.upper())
 
             axs[i, 1].imshow(sr_img)
             axs[i, 1].axis("off")
             if i == 0:
-                axs[i, 1].set_title("ESRGAN")
+                axs[i, 1].set_title(self.model_name.upper())
 
             axs[i, 2].imshow(hr_img)
             axs[i, 2].axis("off")
@@ -786,11 +844,11 @@ class ESRGAN:
         # 保存生成器
         self.generator.save(
             os.path.join(save_models_dir_path, "gen_model_epoch_%d" % epoch),
-            save_format="tf",
+            # save_format="tf",
         )
 
         # 保存判别器
         self.discriminator.save(
             os.path.join(save_models_dir_path, "dis_model_epoch_%d" % epoch),
-            save_format="tf",
+            # save_format="tf",
         )

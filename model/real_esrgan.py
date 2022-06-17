@@ -29,6 +29,7 @@ class RealESRGAN(ESRGAN):
         save_history_interval=10,
         pretrain_model_path="",
         use_sn=False,
+        use_mixed_float=False,
     ):
         super().__init__(
             model_name,
@@ -52,7 +53,9 @@ class RealESRGAN(ESRGAN):
             save_history_interval,
             pretrain_model_path,
             use_sn,
+            use_mixed_float,
         )
+        self.loss_weights = {"percept": 1, "gen": 0.1, "pixel": 1}
 
     def build_discriminator(self, filters=64):
         """
