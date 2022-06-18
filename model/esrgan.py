@@ -844,11 +844,11 @@ class ESRGAN:
         # 保存生成器
         self.generator.save(
             os.path.join(save_models_dir_path, "gen_model_epoch_%d" % epoch),
-            # save_format="tf",
+            save_format="tf",
         )
 
         # 保存判别器
         self.discriminator.save(
             os.path.join(save_models_dir_path, "dis_model_epoch_%d" % epoch),
-            # save_format="tf",
+            save_format="tf",
         )

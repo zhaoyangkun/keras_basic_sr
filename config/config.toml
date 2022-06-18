@@ -54,6 +54,7 @@ save_images_interval = 5  # 保存图片间隔
 save_models_interval = 5  # 保存模型间隔
 save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
 pretrain_model_path = ""  # 预训练模型路径
+use_sn = true             # 是否使用谱归一化层
 use_mixed_float = true    # 是否使用混合精度
 
 # RS-ESRGAN
