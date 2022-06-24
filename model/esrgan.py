@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
+from tensorflow.keras import mixed_precision
 from tensorflow.keras.applications import VGG19
 from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import (
@@ -21,10 +22,10 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import mixed_precision
-from util.data_loader import DataLoader
-from util.layer import RRDB, spectral_norm_conv2d, upsample
+from util.data_loader import DataLoader, PoolData
+from util.layer import RRDB, upsample
 from util.logger import create_logger
+from util.metric import calculate_lpips
 
 
 class ESRGAN:
@@ -103,6 +104,8 @@ class ESRGAN:
             self.data_enhancement_factor,
         )
 
+        self.pool_data = PoolData(pool_size=180, batch_size=self.batch_size)
+
         # 优化器
         self.pre_optimizer = Adam(2e-4)
         self.gen_optimizer = Adam(1e-4)
@@ -145,8 +148,9 @@ class ESRGAN:
         构建 vgg 模型
         """
         vgg = VGG19(weights="imagenet", input_shape=self.hr_shape, include_top=False)
+        # vgg.layers[20].activation = None
 
-        model = Model(vgg.input, outputs=vgg.layers[20].output)
+        model = Model(vgg.input, vgg.layers[20].output)
         model.trainable = False
 
         return model
@@ -169,7 +173,7 @@ class ESRGAN:
 
         # RRDB
         x = x_start
-        for _ in range(6):  # 默认为 16 个
+        for _ in range(4):  # 默认为 16 个
             x = RRDB(x)
 
         # RRDB 之后
@@ -210,14 +214,7 @@ class ESRGAN:
         """
         # 基本卷积块
         def conv2d_block(input, filters, strides=1, bn=True, use_sn=True):
-            x = spectral_norm_conv2d(
-                input,
-                use_sn,
-                filters=filters,
-                kernel_size=3,
-                strides=strides,
-                padding="same",
-            )
+            x = Conv2D(filters, 3, strides=strides, padding="same")(input)
             if bn:
                 x = BatchNormalization(momentum=0.8)(x)
             x = LeakyReLU(alpha=0.2)(x)
@@ -446,6 +443,7 @@ class ESRGAN:
             percept_loss = self.content_loss(hr_img, hr_generated)
             generator_loss = self.generator_loss(real_logit, fake_logit)
             pixel_loss = self.mae_loss(hr_img, hr_generated)
+            # tf.print("g_loss: ", percept_loss, generator_loss, pixel_loss)
             generator_total_loss = (
                 self.loss_weights["percept"] * percept_loss
                 + self.loss_weights["gen"] * generator_loss
@@ -471,9 +469,11 @@ class ESRGAN:
             hr_img = (hr_img + 1) / 2
             hr_generated = (hr_generated + 1) / 2
 
-            # 计算 psnr 和 ssim
+            # 计算 psnr，ssim 和 lpips
             psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
             ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
+            # hr_img, hr_generated = hr_img * 255.0, hr_generated * 255.0
+            # lpips = calculate_lpips(hr_img, hr_generated)
 
         # 若使用混合精度，将梯度除以损失标度
         if self.use_mixed_float:
@@ -571,6 +571,17 @@ class ESRGAN:
 
             # 加载训练数据集，并训练
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
+                # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
+                if self.downsample_mode == "second-order":
+                    lr_imgs, hr_imgs = self.data_loader.feed_second_order_data(
+                        hr_imgs,
+                        self.train_hr_img_height,
+                        self.train_hr_img_width,
+                        True,
+                        False,
+                    )
+                    lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
+
                 g_loss, d_loss, psnr, ssim = self.train_step(lr_imgs, hr_imgs)
                 # g_loss, d_loss, psnr, ssim = (
                 #     g_loss.numpy().item(),
@@ -578,7 +589,6 @@ class ESRGAN:
                 #     psnr.numpy().item(),
                 #     ssim.numpy().item(),
                 # )
-
                 g_loss_batch_total += g_loss
                 d_loss_batch_total += d_loss
                 psnr_batch_total += psnr
@@ -587,14 +597,14 @@ class ESRGAN:
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
                     self.logger.info(
-                        "mode: train, epochs: [%d/%d], batches: [%d/%d], d_loss: %.4f, g_loss: %.4f, psnr: %.2f, ssim: %.2f"
+                        "mode: train, epochs: [%d/%d], batches: [%d/%d], g_loss: %.4f, d_loss: %.4f, psnr: %.2f, ssim: %.2f"
                         % (
                             epoch,
                             self.epochs,
                             batch_idx + 1,
                             batch_idx_count,
-                            d_loss,
                             g_loss,
+                            d_loss,
                             psnr,
                             ssim,
                         )

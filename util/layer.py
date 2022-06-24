@@ -1,6 +1,9 @@
 import tensorflow as tf
-from tensorflow.keras.layers import (Add, Concatenate, Conv2D, Lambda,
-                                     LeakyReLU, PReLU, UpSampling2D)
+from tensorflow.keras import Model
+from tensorflow.keras.applications import VGG19
+from tensorflow.keras.layers import (Add, Concatenate, Conv2D, Input, Lambda,
+                                     LeakyReLU, MaxPooling2D, PReLU, ReLU,
+                                     UpSampling2D)
 from tensorflow_addons.layers import SpectralNormalization
 
 
@@ -312,6 +315,82 @@ def RRFDB(input, input_channels=64, growth_channels=32):
     output = Add()([x, input])
 
     return output
+
+# 构建 VGG19 模型
+def create_vgg19_custom_model():
+    # Block 1
+    input = Input(shape=(None, None, 3))
+    x = Conv2D(64, (3, 3), padding="same", name="block1_conv1")(input)
+    x = ReLU()(x)
+    x = Conv2D(64, (3, 3), padding="same", name="block1_conv2")(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name="block1_pool")(x)
+
+    # Block 2
+    x = Conv2D(128, (3, 3), padding="same", name="block2_conv1")(x)
+    x = ReLU()(x)
+    x = Conv2D(128, (3, 3), padding="same", name="block2_conv2")(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name="block2_pool")(x)
+
+    # Block 3
+    x = Conv2D(256, (3, 3), padding="same", name="block3_conv1")(x)
+    x = ReLU()(x)
+    x = Conv2D(256, (3, 3), padding="same", name="block3_conv2")(x)
+    x = ReLU()(x)
+    x = Conv2D(256, (3, 3), padding="same", name="block3_conv3")(x)
+    x = ReLU()(x)
+    x = Conv2D(256, (3, 3), padding="same", name="block3_conv4")(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name="block3_pool")(x)
+
+    # Block 4
+    x = Conv2D(512, (3, 3), padding="same", name="block4_conv1")(x)
+    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block4_conv2")(x)
+    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block4_conv3")(x)
+    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block4_conv4")(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name="block4_pool")(x)
+
+    # Block 5
+    x = Conv2D(512, (3, 3), padding="same", name="block5_conv1")(x)
+    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block5_conv2")(x)
+    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block5_conv3")(x)
+    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block5_conv4")(x)
+    x = ReLU()(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name="block5_pool")(x)
+
+    return Model(input, x, name="vgg19_features")
+
+# 构建 vgg_19 特征提取模型
+def create_vgg_19_features_model():
+    original_vgg = VGG19(
+        weights="imagenet",
+        include_top=False,
+    )
+    vgg_model = create_vgg19_custom_model()
+    vgg_model.set_weights(original_vgg.get_weights())
+    
+    layers = [
+        "block1_conv2",
+        "block2_conv2",
+        "block3_conv4",
+        "block4_conv4",
+        "block5_conv4",
+    ]
+    outputs = [vgg_model.get_layer(name).output for name in layers]
+
+    model = Model([vgg_model.input], outputs)
+    
+    model.trainable = False
+    
+    return model
 
 
 # # 谱归一化层

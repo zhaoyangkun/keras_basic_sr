@@ -1,6 +1,10 @@
-from tensorflow.keras.layers import Add, Input, LeakyReLU, UpSampling2D
+from multiprocessing import pool
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.applications.vgg19 import preprocess_input
+from tensorflow.keras.layers import Add, Input, Lambda, LeakyReLU, UpSampling2D
 from tensorflow.keras.models import Model
-from util.layer import spectral_norm_conv2d
+from util.layer import create_vgg_19_features_model, spectral_norm_conv2d
 
 from model.esrgan import ESRGAN
 
@@ -200,3 +204,42 @@ class RealESRGAN(ESRGAN):
         model.summary()
 
         return model
+
+    def build_vgg(self):
+        """
+        构建 vgg 模型
+        """
+        return create_vgg_19_features_model()
+
+    def content_loss(self, hr_img, hr_generated):
+        """
+        内容损失
+        """
+        # 反归一化 vgg 输入
+        def preprocess_vgg(x):
+            if isinstance(x, np.ndarray):
+                return preprocess_input((x + 1) * 127.5)
+            else:
+                return Lambda(lambda x: preprocess_input((x + 1) * 127.5))(x)
+
+        hr_generated = preprocess_vgg(hr_generated)
+        hr_img = preprocess_vgg(hr_img)
+
+        # 计算 vgg 特征
+        hr_generated_features = self.vgg(hr_generated)
+        hr_features = self.vgg(hr_img)
+
+        if self.use_mixed_float:
+            loss_weights = tf.constant([0.1, 0.1, 1, 1, 1], dtype=tf.float16)
+            content_loss = tf.constant(0.0, dtype=tf.float16)
+        else:
+            loss_weights = tf.constant([0.1, 0.1, 1, 1, 1], dtype=tf.float32)
+            content_loss = tf.constant(0.0, dtype=tf.float32)
+
+        # 根据权重比计算内容损失
+        for i in range(len(loss_weights)):
+            content_loss += loss_weights[i] * self.mae_loss(
+                hr_features[i], hr_generated_features[i]
+            )
+
+        return content_loss

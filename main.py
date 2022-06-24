@@ -19,7 +19,7 @@ def build_sr_model(config):
     # 校验模型名称
     if model_name not in ["srgan", "esrgan", "real-esrgan", "rs-esrgan"]:
         raise ValueError(
-            "The model name is not corrected, Please Enter srgan, esrgan, real-esrgan or rs-esrgan"
+            "The model name is not corrected, please Enter srgan, esrgan, real-esrgan or rs-esrgan."
         )
 
     # 获取数据集配置

@@ -93,7 +93,9 @@ def filter2D(imgs, kernels):
     kernels = tf.repeat(kernels, repeats=[c], axis=-1)  # k, k, 1, b * c
 
     # kernel_height, kernel_width, input_filters, output_filters
-    conv = layers.Conv2D(b * c, k, weights=[kernels], use_bias=False, groups=b * c)
+    conv = layers.Conv2D(
+        b * c, k, weights=[kernels], use_bias=False, groups=b * c, dtype="float32"
+    )
     conv.trainable = False
 
     # 对图像进行卷积
@@ -122,7 +124,7 @@ def gaussian_filter2d(imgs, filter):
     filter = tf.expand_dims(filter, axis=-1)  # k, k, 1, 1
 
     # kernel_height, kernel_width, input_filters, output_filters
-    conv = layers.Conv2D(1, k, weights=[filter], use_bias=False)
+    conv = layers.Conv2D(1, k, weights=[filter], use_bias=False, dtype="float32")
     conv.trainable = False
 
     imgs = conv(imgs)

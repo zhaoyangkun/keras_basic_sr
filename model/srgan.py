@@ -132,6 +132,7 @@ class SRGAN(object):
         """
         if self.use_mixed_float:
             mixed_precision.set_global_policy("mixed_float16")
+            self.optimizer = mixed_precision.LossScaleOptimizer(self.optimizer)
 
     def build_combined(self):
         """
