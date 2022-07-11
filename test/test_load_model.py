@@ -4,7 +4,7 @@ import sys
 import tensorflow as tf
 from matplotlib import pyplot as plt
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
 # gpus = tf.config.list_physical_devices("GPU")
@@ -25,12 +25,12 @@ from matplotlib import pyplot as plt
 sys.path.append("./")
 from util.data_loader import DataLoader
 
-TAKE_NUM = 5
+TAKE_NUM = 3
 
 # 创建构建数据集对象
 dataloader = DataLoader(
-    train_resource_path="/run/media/zyk/Data/数据集/DIV2K/test",
-    test_resource_path="/run/media/zyk/Data/数据集/DIV2K/test",
+    train_resource_path="/home/zyk/projects/python/tensorflow/keras_basic_sr/image/set5",
+    test_resource_path="/home/zyk/projects/python/tensorflow/keras_basic_sr/image/set5",
     batch_size=1,
     downsample_mode="bicubic",
     train_hr_img_height=128,
@@ -42,21 +42,31 @@ dataloader = DataLoader(
 )
 
 # 加载模型
+srgan_generator = tf.keras.models.load_model(
+    "/run/media/zyk/Data/研究生资料/超分模型结果/srgan/models/train/gen_model_epoch_1000",
+    compile=False,
+)
+
 esrgan_generator = tf.keras.models.load_model(
-    "./result/esrgan/gen_model_epoch_6500", compile=False
+    "/run/media/zyk/Data/研究生资料/超分模型结果/esrgan/models/train/gen_model_epoch_6500",
+    compile=False,
 )
 
 rs_esrgan_generator = tf.keras.models.load_model(
-    "./result/rs-esrgan/gen_model_epoch_1100", compile=False
+    "/home/zyk/桌面/rs-esrgan-bicubic/gen_model_epoch_660",
+    compile=False,
 )
 
 # 从测试数据集中取出一批图片
-test_dataset = dataloader.test_data.unbatch().skip(3).take(TAKE_NUM)
+test_dataset = dataloader.test_data.unbatch().skip(0).take(TAKE_NUM)
 
 # 绘图
-fig, axs = plt.subplots(TAKE_NUM, 4)
+fig, axs = plt.subplots(TAKE_NUM, 5)
 for i, (lr_img, hr_img) in enumerate(test_dataset):
     # 利用生成器生成图片
+    srgan_sr_img = srgan_generator.predict(tf.expand_dims(lr_img, 0))
+    srgan_sr_img = tf.squeeze(srgan_sr_img, axis=0)
+
     esrgan_sr_img = esrgan_generator.predict(tf.expand_dims(lr_img, 0))
     esrgan_sr_img = tf.squeeze(esrgan_sr_img, axis=0)
 
@@ -64,9 +74,10 @@ for i, (lr_img, hr_img) in enumerate(test_dataset):
     rs_esrgan_sr_img = tf.squeeze(rs_esrgan_sr_img, axis=0)
 
     # 反归一化
-    lr_img, hr_img, esrgan_sr_img, rs_esrgan_sr_img = (
+    lr_img, hr_img, srgan_sr_img, esrgan_sr_img, rs_esrgan_sr_img = (
         tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8),
+        tf.cast((srgan_sr_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((esrgan_sr_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((rs_esrgan_sr_img + 1) * 127.5, dtype=tf.uint8),
     )
@@ -79,21 +90,26 @@ for i, (lr_img, hr_img) in enumerate(test_dataset):
     axs[i, 1].imshow(esrgan_sr_img)
     axs[i, 1].axis("off")
     if i == 0:
-        axs[i, 1].set_title("ESRGAN")
+        axs[i, 1].set_title("SRGAN")
 
-    axs[i, 2].imshow(rs_esrgan_sr_img)
+    axs[i, 2].imshow(esrgan_sr_img)
     axs[i, 2].axis("off")
     if i == 0:
-        axs[i, 2].set_title("RS-ESRGAN")
+        axs[i, 2].set_title("ESRGAN")
 
-    axs[i, 3].imshow(hr_img)
+    axs[i, 3].imshow(rs_esrgan_sr_img)
     axs[i, 3].axis("off")
     if i == 0:
-        axs[i, 3].set_title("Groud Truth")
+        axs[i, 3].set_title("RS-ESRGAN")
+
+    axs[i, 4].imshow(hr_img)
+    axs[i, 4].axis("off")
+    if i == 0:
+        axs[i, 4].set_title("Groud Truth")
 
     # 保存图片
     fig.savefig(
-        os.path.join("./image/test", "test.png"),
+        os.path.join("./image/test", "test_2.png"),
         dpi=500,
         bbox_inches="tight",
     )

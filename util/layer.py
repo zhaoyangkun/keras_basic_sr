@@ -8,8 +8,10 @@ from tensorflow_addons.layers import SpectralNormalization
 
 
 # 基于谱归一化的卷积层
-def spectral_norm_conv2d(input, use_sn=True, **kwargs):
+def spectral_norm_conv2d(input, use_sn=True, sn_dtype=None, **kwargs):
     if use_sn:
+        if sn_dtype:
+            return SpectralNormalization(Conv2D(**kwargs, dtype=sn_dtype), dtype=sn_dtype)(input)
         return SpectralNormalization(Conv2D(**kwargs))(input)
     else:
         return Conv2D(**kwargs)(input)
@@ -322,14 +324,14 @@ def create_vgg19_custom_model():
     input = Input(shape=(None, None, 3))
     x = Conv2D(64, (3, 3), padding="same", name="block1_conv1")(input)
     x = ReLU()(x)
-    x = Conv2D(64, (3, 3), padding="same", name="block1_conv2")(x)
+    x = Conv2D(64, (3, 3), padding="same", name="block1_conv2", dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block1_pool")(x)
 
     # Block 2
     x = Conv2D(128, (3, 3), padding="same", name="block2_conv1")(x)
     x = ReLU()(x)
-    x = Conv2D(128, (3, 3), padding="same", name="block2_conv2")(x)
+    x = Conv2D(128, (3, 3), padding="same", name="block2_conv2", dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block2_pool")(x)
 
@@ -340,7 +342,7 @@ def create_vgg19_custom_model():
     x = ReLU()(x)
     x = Conv2D(256, (3, 3), padding="same", name="block3_conv3")(x)
     x = ReLU()(x)
-    x = Conv2D(256, (3, 3), padding="same", name="block3_conv4")(x)
+    x = Conv2D(256, (3, 3), padding="same", name="block3_conv4", dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block3_pool")(x)
 
@@ -351,7 +353,7 @@ def create_vgg19_custom_model():
     x = ReLU()(x)
     x = Conv2D(512, (3, 3), padding="same", name="block4_conv3")(x)
     x = ReLU()(x)
-    x = Conv2D(512, (3, 3), padding="same", name="block4_conv4")(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block4_conv4", dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block4_pool")(x)
 
@@ -362,14 +364,14 @@ def create_vgg19_custom_model():
     x = ReLU()(x)
     x = Conv2D(512, (3, 3), padding="same", name="block5_conv3")(x)
     x = ReLU()(x)
-    x = Conv2D(512, (3, 3), padding="same", name="block5_conv4")(x)
-    x = ReLU()(x)
+    x = Conv2D(512, (3, 3), padding="same", name="block5_conv4", dtype="float32")(x)
+    x = ReLU(name="block5_conv4_relu", dtype="float32")(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block5_pool")(x)
 
     return Model(input, x, name="vgg19_features")
 
 # 构建 vgg_19 特征提取模型
-def create_vgg_19_features_model():
+def create_vgg_19_features_model(loss_type="srgan"):
     original_vgg = VGG19(
         weights="imagenet",
         include_top=False,
@@ -377,14 +379,19 @@ def create_vgg_19_features_model():
     vgg_model = create_vgg19_custom_model()
     vgg_model.set_weights(original_vgg.get_weights())
     
-    layers = [
-        "block1_conv2",
-        "block2_conv2",
-        "block3_conv4",
-        "block4_conv4",
-        "block5_conv4",
-    ]
-    outputs = [vgg_model.get_layer(name).output for name in layers]
+    if loss_type == "srgan":
+        outputs = vgg_model.get_layer("block5_conv4_relu").output
+    elif loss_type == "esrgan":
+        outputs = vgg_model.get_layer("block5_conv4").output
+    elif loss_type == "real-esrgan":
+        layers = [
+            "block1_conv2",
+            "block2_conv2",
+            "block3_conv4",
+            "block4_conv4",
+            "block5_conv4",
+        ]
+        outputs = [vgg_model.get_layer(name).output for name in layers]
 
     model = Model([vgg_model.input], outputs)
     

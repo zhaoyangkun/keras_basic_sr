@@ -1,9 +1,9 @@
-import tensorflow as tf
 import math
-import numpy as np
 import random
-import cv2
 
+import cv2
+import numpy as np
+import tensorflow as tf
 from tensorflow.keras import layers
 
 final_sinc_prob = 0.8

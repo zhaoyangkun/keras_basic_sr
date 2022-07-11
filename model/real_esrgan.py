@@ -1,8 +1,7 @@
-from multiprocessing import pool
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.applications.vgg19 import preprocess_input
-from tensorflow.keras.layers import Add, Input, Lambda, LeakyReLU, UpSampling2D
+from tensorflow.keras.layers import Add, Input, Lambda, LeakyReLU, UpSampling2D, Conv2D
 from tensorflow.keras.models import Model
 from util.layer import create_vgg_19_features_model, spectral_norm_conv2d
 
@@ -25,6 +24,7 @@ class RealESRGAN(ESRGAN):
         train_hr_img_width=128,
         valid_hr_img_height=128,
         valid_hr_img_width=128,
+        rdb_num=16,
         max_workers=4,
         data_enhancement_factor=1,
         log_interval=20,
@@ -32,8 +32,8 @@ class RealESRGAN(ESRGAN):
         save_models_interval=50,
         save_history_interval=10,
         pretrain_model_path="",
-        use_sn=False,
         use_mixed_float=False,
+        use_sn=False,
     ):
         super().__init__(
             model_name,
@@ -49,6 +49,7 @@ class RealESRGAN(ESRGAN):
             train_hr_img_width,
             valid_hr_img_height,
             valid_hr_img_width,
+            rdb_num,
             max_workers,
             data_enhancement_factor,
             log_interval,
@@ -56,8 +57,8 @@ class RealESRGAN(ESRGAN):
             save_models_interval,
             save_history_interval,
             pretrain_model_path,
-            use_sn,
             use_mixed_float,
+            use_sn,
         )
         self.loss_weights = {"percept": 1, "gen": 0.1, "pixel": 1}
 
@@ -68,13 +69,8 @@ class RealESRGAN(ESRGAN):
         input = Input(shape=self.hr_shape)  # (h, w, 3)
 
         # 第一层卷积
-        x_0 = spectral_norm_conv2d(
-            input,
-            self.use_sn,
-            filters=filters,
-            kernel_size=3,
-            strides=1,
-            padding="same",
+        x_0 = Conv2D(filters=filters, kernel_size=3, strides=1, padding="same")(
+            input
         )  # (h, w, filters)
         x_0 = LeakyReLU(0.2)(x_0)
 
@@ -190,14 +186,15 @@ class RealESRGAN(ESRGAN):
         out = LeakyReLU(0.2)(out)
 
         # 第十层卷积
-        out = spectral_norm_conv2d(
-            out,
-            self.use_sn,
+        out = Conv2D(
             filters=1,
             kernel_size=3,
             strides=1,
             padding="same",
             use_bias=False,
+            dtype="float32",
+        )(
+            out
         )  # (h, w, 1)
 
         model = Model(inputs=input, outputs=out, name="discriminator")
@@ -209,7 +206,7 @@ class RealESRGAN(ESRGAN):
         """
         构建 vgg 模型
         """
-        return create_vgg_19_features_model()
+        return create_vgg_19_features_model(loss_type="real-esrgan")
 
     def content_loss(self, hr_img, hr_generated):
         """
@@ -229,13 +226,8 @@ class RealESRGAN(ESRGAN):
         hr_generated_features = self.vgg(hr_generated)
         hr_features = self.vgg(hr_img)
 
-        if self.use_mixed_float:
-            loss_weights = tf.constant([0.1, 0.1, 1, 1, 1], dtype=tf.float16)
-            content_loss = tf.constant(0.0, dtype=tf.float16)
-        else:
-            loss_weights = tf.constant([0.1, 0.1, 1, 1, 1], dtype=tf.float32)
-            content_loss = tf.constant(0.0, dtype=tf.float32)
-
+        loss_weights = tf.constant([0.1, 0.1, 1, 1, 1], dtype=tf.float32)
+        content_loss = tf.constant(0.0, dtype=tf.float32)
         # 根据权重比计算内容损失
         for i in range(len(loss_weights)):
             content_loss += loss_weights[i] * self.mae_loss(

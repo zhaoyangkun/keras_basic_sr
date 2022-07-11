@@ -1,14 +1,9 @@
-import os
-import shutil
-
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
-from tensorflow.keras import mixed_precision
-from tensorflow.keras.applications import VGG19
 from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import (
+    Activation,
     Add,
     BatchNormalization,
     Conv2D,
@@ -22,13 +17,12 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from util.data_loader import DataLoader, PoolData
-from util.layer import RRDB, upsample
-from util.logger import create_logger
-from util.metric import calculate_lpips
+from util.layer import RRDB, create_vgg_19_features_model, upsample
+
+from model.srgan import SRGAN
 
 
-class ESRGAN:
+class ESRGAN(SRGAN):
     def __init__(
         self,
         model_name,
@@ -44,6 +38,7 @@ class ESRGAN:
         train_hr_img_width=128,
         valid_hr_img_height=128,
         valid_hr_img_width=128,
+        rdb_num=16,
         max_workers=4,
         data_enhancement_factor=1,
         log_interval=20,
@@ -51,60 +46,34 @@ class ESRGAN:
         save_models_interval=50,
         save_history_interval=10,
         pretrain_model_path="",
-        use_sn=False,
         use_mixed_float=False,
+        use_sn=False,
     ):
-        self.model_name = model_name  # 模型名称
-        self.result_path = result_path  # 结果保存路径
-        self.train_resource_path = train_resource_path  # 训练图片资源路径
-        self.test_resource_path = test_resource_path  # 测试图片资源路径
-        self.epochs = epochs  # 训练轮数
-        self.init_epoch = init_epoch  # 初始化训练轮数
-        self.batch_size = batch_size  # 批次大小
-        self.downsample_mode = downsample_mode  # 下采样模式
-        self.scale_factor = scale_factor  # 图片缩放比例
-        self.lr_shape = (
-            train_hr_img_height // scale_factor,
-            train_hr_img_width // scale_factor,
-            3,
-        )  # 缩放后的图片尺寸
-        self.hr_shape = (train_hr_img_height, train_hr_img_width, 3)  # 原图尺寸
-        self.train_hr_img_height = train_hr_img_height
-        self.train_hr_img_width = train_hr_img_width
-        self.valid_hr_img_height = valid_hr_img_height
-        self.valid_hr_img_width = valid_hr_img_width
-        self.max_workers = max_workers  # 处理图片的最大线程数
-        self.data_enhancement_factor = (
-            data_enhancement_factor  # 数据增强因子，表示利用随机裁剪和水平翻转来扩充训练数据集的倍数，默认为 1（不进行扩充）
+        super().__init__(
+            model_name,
+            result_path,
+            train_resource_path,
+            test_resource_path,
+            epochs,
+            init_epoch,
+            batch_size,
+            downsample_mode,
+            scale_factor,
+            train_hr_img_height,
+            train_hr_img_width,
+            valid_hr_img_height,
+            valid_hr_img_width,
+            rdb_num,
+            max_workers,
+            data_enhancement_factor,
+            log_interval,
+            save_images_interval,
+            save_models_interval,
+            save_history_interval,
+            pretrain_model_path,
+            use_mixed_float,
+            use_sn,
         )
-        self.log_interval = log_interval  # 打印日志间隔
-        self.save_images_interval = save_images_interval  # 保存图片迭代间隔
-        self.save_models_interval = save_models_interval  # 保存模型迭代间隔
-        self.save_history_interval = save_history_interval  # 保存历史数据迭代间隔
-        self.pretrain_model_path = pretrain_model_path  # 预训练模型路径
-        self.use_mixed_float = use_mixed_float  # 是否使用混合精度
-
-        # 创建日志记录器
-        log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
-        log_file_name = "%s_train.log" % self.model_name
-        self.logger = create_logger(log_dir_path, log_file_name, self.model_name)
-
-        # 创建数据集
-        self.data_loader = DataLoader(
-            self.train_resource_path,
-            self.test_resource_path,
-            self.batch_size,
-            self.downsample_mode,
-            self.train_hr_img_height,
-            self.train_hr_img_width,
-            self.valid_hr_img_height,
-            self.valid_hr_img_width,
-            self.scale_factor,
-            self.max_workers,
-            self.data_enhancement_factor,
-        )
-
-        self.pool_data = PoolData(pool_size=180, batch_size=self.batch_size)
 
         # 优化器
         self.pre_optimizer = Adam(2e-4)
@@ -121,46 +90,25 @@ class ESRGAN:
         self.mse_loss = MeanSquaredError()
         self.mae_loss = MeanAbsoluteError()
 
-        # 谱归一化
-        self.use_sn = use_sn
-
-        # 构建 vgg 模型
-        self.vgg = self.build_vgg()
-
-        # 构建生成器
-        self.generator = self.build_generator()
-
-        # 构建判别器
-        self.discriminator = self.build_discriminator()
-
-    def check_mixed(self):
-        """
-        检查是否使用混合精度
-        """
-        if self.use_mixed_float:
-            mixed_precision.set_global_policy("mixed_float16")
-            self.pre_optimizer = mixed_precision.LossScaleOptimizer(self.pre_optimizer)
-            self.gen_optimizer = mixed_precision.LossScaleOptimizer(self.gen_optimizer)
-            self.dis_optimizer = mixed_precision.LossScaleOptimizer(self.dis_optimizer)
-
     def build_vgg(self):
         """
         构建 vgg 模型
         """
-        vgg = VGG19(weights="imagenet", input_shape=self.hr_shape, include_top=False)
+        # vgg = VGG19(weights="imagenet", input_shape=self.hr_shape, include_top=False)
         # vgg.layers[20].activation = None
 
-        model = Model(vgg.input, vgg.layers[20].output)
-        model.trainable = False
+        # model = Model(vgg.input, vgg.layers[20].output)
+        # model.trainable = False
 
-        return model
+        # return model
+        return create_vgg_19_features_model(loss_type="esrgan")
 
     def build_generator(self):
         """
         构建生成器
         """
         # 低分辨率图像作为输入
-        lr_input = Input(shape=(None, None, 3))
+        lr_img = Input(shape=(None, None, 3))
 
         # RRDB 之前
         x_start = Conv2D(
@@ -168,7 +116,7 @@ class ESRGAN:
             kernel_size=3,
             strides=1,
             padding="same",
-        )(lr_input)
+        )(lr_img)
         x_start = LeakyReLU(0.5)(x_start)
 
         # RRDB
@@ -197,11 +145,18 @@ class ESRGAN:
             padding="same",
         )(x)
         x = LeakyReLU(0.2)(x)
-        hr_output = Conv2D(
-            3, kernel_size=3, strides=1, padding="same", activation="tanh"
+        x = Conv2D(
+            3,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+        )(x)
+        sr_img = Activation(
+            "tanh",
+            dtype="float32",
         )(x)
 
-        model = Model(inputs=lr_input, outputs=hr_output, name="generator")
+        model = Model(inputs=lr_img, outputs=sr_img, name="generator")
         model.summary()
 
         return model
@@ -213,7 +168,7 @@ class ESRGAN:
             filters (int, optional): 通道数. 默认为 64.
         """
         # 基本卷积块
-        def conv2d_block(input, filters, strides=1, bn=True, use_sn=True):
+        def conv2d_block(input, filters, strides=1, bn=True):
             x = Conv2D(filters, 3, strides=strides, padding="same")(input)
             if bn:
                 x = BatchNormalization(momentum=0.8)(x)
@@ -223,28 +178,49 @@ class ESRGAN:
 
         # 高分辨率图像作为输入
         img = Input(shape=self.hr_shape)  # (h, w, 3)
-        x = conv2d_block(img, filters, bn=False, use_sn=self.use_sn)  # (h, w, filters)
         x = conv2d_block(
-            x, filters, strides=2, use_sn=self.use_sn
+            img,
+            filters,
+            bn=False,
+        )  # (h, w, filters)
+        x = conv2d_block(
+            x,
+            filters,
+            strides=2,
         )  # (h/2, w/2, filters)
-        x = conv2d_block(x, filters * 2, use_sn=self.use_sn)  # (h/2, w/2, filters * 2)
         x = conv2d_block(
-            x, filters * 2, strides=2, use_sn=self.use_sn
+            x,
+            filters * 2,
+        )  # (h/2, w/2, filters * 2)
+        x = conv2d_block(
+            x,
+            filters * 2,
+            strides=2,
         )  # (h/4, w/4, filters * 2)
-        x = conv2d_block(x, filters * 4, use_sn=self.use_sn)  # (h/4, w/4, filters * 4)
         x = conv2d_block(
-            x, filters * 4, strides=2, use_sn=self.use_sn
+            x,
+            filters * 4,
+        )  # (h/4, w/4, filters * 4)
+        x = conv2d_block(
+            x,
+            filters * 4,
+            strides=2,
         )  # (h/8, w/8, filters * 4)
-        x = conv2d_block(x, filters * 8, use_sn=self.use_sn)  # (h/8, w/8, filters * 8)
         x = conv2d_block(
-            x, filters * 8, strides=2, use_sn=self.use_sn
+            x,
+            filters * 8,
+        )  # (h/8, w/8, filters * 8)
+        x = conv2d_block(
+            x,
+            filters * 8,
+            strides=2,
         )  # (h/16, w/16, filters * 8)
         # x = Flatten()(x)
         x = GlobalAveragePooling2D()(x)  # (filters * 8)
         x = Dense(filters * 16)(x)  # (filters * 16)
         x = LeakyReLU(alpha=0.2)(x)
         x = Dropout(0.4)(x)
-        x = Dense(1)(x)  # (1)
+        x = Dense(1, dtype="float32")(x)  # (1)
 
         model = Model(inputs=img, outputs=x, name="discriminator")
         model.summary()
@@ -330,6 +306,7 @@ class ESRGAN:
         with tf.GradientTape() as tape:
             hr_generated = self.generator(lr_img, training=True)
             loss = self.mae_loss(hr_img, hr_generated)
+
             if self.use_mixed_float:
                 scaled_loss = self.pre_optimizer.get_scaled_loss(loss)
         if self.use_mixed_float:
@@ -339,83 +316,12 @@ class ESRGAN:
             gradients = self.pre_optimizer.get_unscaled_gradients(scaled_gradients)
         else:
             gradients = tape.gradient(loss, self.generator.trainable_variables)
+
         self.pre_optimizer.apply_gradients(
             zip(gradients, self.generator.trainable_variables)
         )
 
         return loss
-
-    def pretrain(self):
-        """
-        预训练
-        """
-        # 保存历史数据文件夹路径
-        save_history_dir_path = os.path.join(
-            self.result_path, self.model_name, "history", "pretrain"
-        )
-        # 若保存历史数据文件夹不存在，则创建
-        if not os.path.isdir(save_history_dir_path):
-            os.makedirs(save_history_dir_path)
-
-        # 保存模型文件夹路径
-        save_models_dir_path = os.path.join(
-            self.result_path, self.model_name, "models", "pretrain"
-        )
-        # 若保存模型文件夹不存在，则创建
-        if not os.path.isdir(save_models_dir_path):
-            os.makedirs(save_models_dir_path)
-
-        epoch_list = tf.constant([])
-        loss_list = tf.constant([], dtype=tf.float32)
-        batch_idx_count = tf.constant(
-            len(self.data_loader.train_data), dtype=tf.float32
-        )
-        for epoch in range(self.init_epoch, self.epochs + 1):
-            loss_batch_total = tf.constant(0, dtype=tf.float32)
-
-            # 加载训练数据集，并训练
-            for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
-                # 计算 mini-batch 数目
-                mini_batches = (
-                    (epoch - 1) * len(self.data_loader.train_data) + batch_idx + 1
-                )
-
-                # 根据 mini-batch 数目动态修改学习率
-                self.pretrain_scheduler([self.pre_optimizer], mini_batches)
-
-                # 单步训练
-                loss = self.pretrain_step(lr_imgs, hr_imgs)
-                # loss = loss.numpy().item()
-                loss_batch_total += loss
-
-                # 输出日志
-                if (batch_idx + 1) % self.log_interval == 0:
-                    self.logger.info(
-                        "mode: pretrain, epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
-                        % (
-                            epoch,
-                            self.epochs,
-                            batch_idx + 1,
-                            batch_idx_count,
-                            loss,
-                        )
-                    )
-
-            # 统计 epoch 和 loss
-            epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
-            loss_list = tf.concat(
-                [loss_list, [loss_batch_total / batch_idx_count]], axis=0
-            )
-
-            # 保存历史数据
-            if epoch % self.save_history_interval == 0:
-                self.save_pretrain_history(
-                    epoch, save_history_dir_path, epoch_list, loss_list
-                )
-
-            # 保存模型
-            if epoch % self.save_models_interval == 0:
-                self.save_pretrain_models(epoch, save_models_dir_path)
 
     @tf.function
     def train_step(self, lr_img, hr_img):
@@ -443,7 +349,6 @@ class ESRGAN:
             percept_loss = self.content_loss(hr_img, hr_generated)
             generator_loss = self.generator_loss(real_logit, fake_logit)
             pixel_loss = self.mae_loss(hr_img, hr_generated)
-            # tf.print("g_loss: ", percept_loss, generator_loss, pixel_loss)
             generator_total_loss = (
                 self.loss_weights["percept"] * percept_loss
                 + self.loss_weights["gen"] * generator_loss
@@ -460,20 +365,18 @@ class ESRGAN:
                     generator_total_loss
                 )
 
-                # 将数值类型从 float16 转换为 float32
-                hr_generated = tf.cast(hr_generated, dtype=tf.float32)
-                generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
-                discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
+                # # 将数值类型从 float16 转换为 float32
+                # hr_generated = tf.cast(hr_generated, dtype=tf.float32)
+                # generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
+                # discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
 
             # 将归一化区间从 [-1, 1] 转换到 [0, 1]
             hr_img = (hr_img + 1) / 2
             hr_generated = (hr_generated + 1) / 2
 
-            # 计算 psnr，ssim 和 lpips
+            # 计算 psnr，ssim
             psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
             ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
-            # hr_img, hr_generated = hr_img * 255.0, hr_generated * 255.0
-            # lpips = calculate_lpips(hr_img, hr_generated)
 
         # 若使用混合精度，将梯度除以损失标度
         if self.use_mixed_float:
@@ -506,359 +409,3 @@ class ESRGAN:
         )
 
         return generator_total_loss, discriminator_loss, psnr, ssim
-
-    def train(self):
-        """
-        训练模型
-        """
-        # 保存模型文件夹路径
-        save_models_dir_path = os.path.join(
-            self.result_path, self.model_name, "models", "train"
-        )
-        # 若保存模型文件夹不存在，则创建
-        if not os.path.isdir(save_models_dir_path):
-            os.makedirs(save_models_dir_path)
-
-        # 保存图片文件夹路径
-        save_images_dir_path = os.path.join(
-            self.result_path, self.model_name, "images", "train"
-        )
-        # 若保存图片文件夹不存在，则创建
-        if not os.path.isdir(save_images_dir_path):
-            os.makedirs(save_images_dir_path)
-
-        # 保存历史数据文件夹路径
-        save_history_dir_path = os.path.join(
-            self.result_path, self.model_name, "history", "train"
-        )
-        # 若保存历史数据文件夹不存在，则创建
-        if not os.path.isdir(save_history_dir_path):
-            os.makedirs(save_history_dir_path)
-
-        # 加载预训练模型
-        if self.pretrain_model_path:
-            self.generator.load_weights(self.pretrain_model_path)
-
-        # 若初始 epoch 大于 1，则加载模型
-        if self.init_epoch > 1:
-            self.generator = tf.keras.models.load_model(
-                os.path.join(
-                    save_models_dir_path, "gen_model_epoch_%d" % (self.init_epoch)
-                )
-            )
-            self.discriminator = tf.keras.models.load_model(
-                os.path.join(
-                    save_models_dir_path, "dis_model_epoch_%d" % (self.init_epoch)
-                )
-            )
-
-        epoch_list = tf.constant([])
-        g_loss_list = tf.constant([], dtype=tf.float32)
-        d_loss_list = tf.constant([], dtype=tf.float32)
-        psnr_list = tf.constant([], dtype=tf.float32)
-        ssim_list = tf.constant([], dtype=tf.float32)
-        for epoch in range(self.init_epoch, self.epochs + 1):
-            g_loss_batch_total = tf.constant(0, dtype=tf.float32)
-            d_loss_batch_total = tf.constant(0, dtype=tf.float32)
-            psnr_batch_total = tf.constant(0, dtype=tf.float32)
-            ssim_batch_total = tf.constant(0, dtype=tf.float32)
-            batch_idx_count = tf.constant(
-                len(self.data_loader.train_data), dtype=tf.float32
-            )
-
-            # 修改学习率
-            self.scheduler([self.gen_optimizer, self.dis_optimizer], epoch)
-
-            # 加载训练数据集，并训练
-            for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
-                # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
-                if self.downsample_mode == "second-order":
-                    lr_imgs, hr_imgs = self.data_loader.feed_second_order_data(
-                        hr_imgs,
-                        self.train_hr_img_height,
-                        self.train_hr_img_width,
-                        True,
-                        False,
-                    )
-                    lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
-
-                g_loss, d_loss, psnr, ssim = self.train_step(lr_imgs, hr_imgs)
-                # g_loss, d_loss, psnr, ssim = (
-                #     g_loss.numpy().item(),
-                #     d_loss.numpy().item(),
-                #     psnr.numpy().item(),
-                #     ssim.numpy().item(),
-                # )
-                g_loss_batch_total += g_loss
-                d_loss_batch_total += d_loss
-                psnr_batch_total += psnr
-                ssim_batch_total += ssim
-
-                # 输出日志
-                if (batch_idx + 1) % self.log_interval == 0:
-                    self.logger.info(
-                        "mode: train, epochs: [%d/%d], batches: [%d/%d], g_loss: %.4f, d_loss: %.4f, psnr: %.2f, ssim: %.2f"
-                        % (
-                            epoch,
-                            self.epochs,
-                            batch_idx + 1,
-                            batch_idx_count,
-                            g_loss,
-                            d_loss,
-                            psnr,
-                            ssim,
-                        )
-                    )
-
-            epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
-            g_loss_list = tf.concat(
-                [g_loss_list, [g_loss_batch_total / batch_idx_count]], axis=0
-            )
-            d_loss_list = tf.concat(
-                [d_loss_list, [d_loss_batch_total / batch_idx_count]], axis=0
-            )
-            psnr_list = tf.concat(
-                [psnr_list, [psnr_batch_total / batch_idx_count]], axis=0
-            )
-            ssim_list = tf.concat(
-                [ssim_list, [ssim_batch_total / batch_idx_count]], axis=0
-            )
-
-            # 保存历史数据
-            if epoch % self.save_history_interval == 0:
-                self.save_history(
-                    epoch,
-                    save_history_dir_path,
-                    epoch_list,
-                    g_loss_list,
-                    d_loss_list,
-                    psnr_list,
-                    ssim_list,
-                )
-
-            # 保存图片
-            if epoch % self.save_images_interval == 0:
-                self.save_images(epoch, save_images_dir_path, 5)
-
-            # 评估并保存模型
-            if epoch % self.save_models_interval == 0:
-                self.evaluate(epoch)
-                self.save_models(epoch, save_models_dir_path)
-
-    @tf.function
-    def valid_step(self, lr_img, hr_img):
-        """
-        单步验证
-        """
-        hr_generated = self.generator(lr_img, training=False)
-        if self.use_mixed_float:
-            # 将数值类型从 float16 转换为 float32
-            hr_generated = tf.cast(hr_generated, dtype=tf.float32)
-
-        # 将归一化区间从 [-1, 1] 转换到 [0, 1]
-        hr_img = (hr_img + 1) / 2
-        hr_generated = (hr_generated + 1) / 2
-
-        # 计算 psnr 和 ssim
-        psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
-        ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
-
-        return psnr, ssim
-
-    def evaluate(self, epoch):
-        """
-        评估模型
-        """
-        test_data_len = tf.constant(len(self.data_loader.test_data), dtype=tf.float32)
-        psnr_total = tf.constant(0, dtype=tf.float32)
-        ssim_total = tf.constant(0, dtype=tf.float32)
-        for (lr_imgs, hr_imgs) in self.data_loader.test_data:
-            psnr, ssim = self.valid_step(lr_imgs, hr_imgs)
-            # 统计 PSNR 和 SSIM
-            psnr_total += psnr
-            ssim_total += ssim
-        # 输出 SSIM 和 PSNR
-        self.logger.info(
-            "evaluate %s, epochs: [%d/%d], PSNR: %.2f, SSIM: %.2f"
-            % (
-                self.model_name,
-                epoch,
-                self.epochs,
-                psnr_total / test_data_len,
-                ssim_total / test_data_len,
-            )
-        )
-
-    def save_pretrain_history(
-        self, epoch, save_history_dir_path, epoch_list, loss_list
-    ):
-        """
-        保存预训练历史数据
-        """
-        fig = plt.figure(figsize=(10, 10))
-
-        # 绘制损失曲线
-        ax = plt.subplot(1, 1, 1)
-        ax.set_title("Pretrain Loss")
-        (line,) = ax.plot(
-            epoch_list, loss_list, color="deepskyblue", marker=".", label="loss"
-        )
-        ax.set_xlabel("epoch")
-        ax.set_ylabel("Loss")
-        ax.legend(handles=[line], loc="upper right")
-
-        fig.tight_layout()
-        fig.savefig(
-            os.path.join(
-                save_history_dir_path, "pretrain_history_epoch_%d.png" % epoch
-            ),
-            dpi=500,
-            bbox_inches="tight",
-        )
-        fig.clear()
-        plt.close(fig)
-
-    def save_history(
-        self,
-        epoch,
-        save_history_dir_path,
-        epoch_list,
-        g_loss_list,
-        d_loss_list,
-        psnr_list,
-        ssim_list,
-    ):
-        """
-        保存历史数据
-        """
-        fig = plt.figure(figsize=(10, 10))
-
-        # 绘制损失曲线
-        ax_1 = plt.subplot(2, 1, 1)
-        ax_1.set_title("Train Loss")
-        (line_1,) = ax_1.plot(
-            epoch_list, g_loss_list, color="deepskyblue", marker=".", label="g_loss"
-        )
-        (line_2,) = ax_1.plot(
-            epoch_list, d_loss_list, color="darksalmon", marker=".", label="d_loss"
-        )
-        ax_1.set_xlabel("epoch")
-        ax_1.set_ylabel("Loss")
-        ax_1.legend(handles=[line_1, line_2], loc="upper right")
-
-        # 绘制 PSNR 曲线
-        ax_2 = plt.subplot(2, 2, 3)
-        ax_2.set_title("PSNR")
-        (line_3,) = ax_2.plot(
-            epoch_list, psnr_list, color="orange", marker=".", label="PSNR"
-        )
-        ax_2.set_xlabel("epoch")
-        ax_2.set_ylabel("PSNR")
-        ax_2.legend(handles=[line_3], loc="upper left")
-
-        # 绘制损失曲线
-        ax_3 = plt.subplot(2, 2, 4)
-        ax_3.set_title("SSIM")
-        (line_4,) = ax_3.plot(
-            epoch_list, ssim_list, color="skyblue", marker=".", label="SSIM"
-        )
-        ax_3.set_xlabel("epoch")
-        ax_3.set_ylabel("SSIM")
-        ax_3.legend(handles=[line_4], loc="upper left")
-
-        fig.tight_layout()
-        fig.savefig(
-            os.path.join(save_history_dir_path, "train_history_epoch_%d.png" % epoch),
-            dpi=500,
-            bbox_inches="tight",
-        )
-        fig.clear()
-        plt.close(fig)
-
-    def save_images(self, epoch, save_images_dir_path, take_num=5):
-        """
-        保存图片
-        """
-        # 从测试数据集中取出一批图片
-        test_dataset = self.data_loader.test_data.unbatch().take(take_num)
-
-        # 绘图
-        fig, axs = plt.subplots(take_num, 3)
-        for i, (lr_img, hr_img) in enumerate(test_dataset):
-            # 利用生成器生成图片
-            sr_img = self.generator.predict(tf.expand_dims(lr_img, 0))
-            sr_img = tf.squeeze(sr_img, axis=0)
-
-            # 反归一化
-            lr_img, hr_img, sr_img = (
-                tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8),
-                tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8),
-                tf.cast((sr_img + 1) * 127.5, dtype=tf.uint8),
-            )
-
-            axs[i, 0].imshow(lr_img)
-            axs[i, 0].axis("off")
-            if i == 0:
-                axs[i, 0].set_title(self.downsample_mode.upper())
-
-            axs[i, 1].imshow(sr_img)
-            axs[i, 1].axis("off")
-            if i == 0:
-                axs[i, 1].set_title(self.model_name.upper())
-
-            axs[i, 2].imshow(hr_img)
-            axs[i, 2].axis("off")
-            if i == 0:
-                axs[i, 2].set_title("Ground Truth")
-        # 保存图片
-        fig.savefig(
-            os.path.join(save_images_dir_path, "test_epoch_%d.png" % epoch),
-            dpi=500,
-            bbox_inches="tight",
-        )
-        fig.clear()
-        plt.close(fig)
-
-    def save_pretrain_models(self, epoch, save_models_dir_path):
-        """
-        保存预训练模型
-        """
-        # 删除原先的模型文件，仅保存最新的模型
-        file_name_list = os.listdir(save_models_dir_path)
-        for file_name in file_name_list:
-            file_path = os.path.join(save_models_dir_path, file_name)
-            if os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-            elif os.path.isfile(file_path):
-                os.remove(file_path)
-
-        # 保存生成器权重
-        self.generator.save_weights(
-            os.path.join(save_models_dir_path, "gen_weights_epoch_%d.ckpt" % epoch),
-            save_format="tf",
-        )
-
-    def save_models(self, epoch, save_models_dir_path):
-        """
-        保存模型
-        """
-        # 删除原先的模型文件，仅保存最新的模型
-        file_name_list = os.listdir(save_models_dir_path)
-        for file_name in file_name_list:
-            file_path = os.path.join(save_models_dir_path, file_name)
-            if os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-            elif os.path.isfile(file_path):
-                os.remove(file_path)
-
-        # 保存生成器
-        self.generator.save(
-            os.path.join(save_models_dir_path, "gen_model_epoch_%d" % epoch),
-            save_format="tf",
-        )
-
-        # 保存判别器
-        self.discriminator.save(
-            os.path.join(save_models_dir_path, "dis_model_epoch_%d" % epoch),
-            save_format="tf",
-        )

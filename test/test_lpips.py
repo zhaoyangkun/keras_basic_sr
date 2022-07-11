@@ -23,9 +23,9 @@ y_pred = tf.concat([lr_img, sr_img], axis=0)
 
 metric = calculate_lpips(y_true, y_pred)
 
-print(f"y_true shape: {y_true.shape}")
-print(f"y_pred shape: {y_pred.shape}")
+print(f"y_true shape: {y_true}")
+print(f"y_pred shape: {y_pred}")
 print(f"lpips metric shape: {metric.shape}")
 print(f"ref <-> p0: {metric[0]:.3f}")
 print(f"ref <-> p1: {metric[1]:.3f}")
-print(f"mean lpips metric: {tf.reduce_mean(metric)}")
+# print(f"mean lpips metric: {metric}")

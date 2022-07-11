@@ -1,6 +1,6 @@
-from tensorflow.keras.layers import Add, Conv2D, Input, LeakyReLU, UpSampling2D
+from tensorflow.keras.layers import Activation, Add, Conv2D, Input, LeakyReLU
 from tensorflow.keras.models import Model
-from util.layer import RFB, RRDB, RRFDB, spectral_norm_conv2d, upsample_rfb
+from util.layer import RFB, RRDB, RRFDB, upsample_rfb
 
 from model.real_esrgan import RealESRGAN
 
@@ -100,11 +100,21 @@ class RS_ESRGAN(RealESRGAN):
             padding="same",
         )(x)
         x = LeakyReLU(0.2)(x)
-        hr_output = Conv2D(
-            3, kernel_size=3, strides=1, padding="same", activation="tanh"
+        x = Conv2D(
+            3,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+        )(x)
+        hr_output = Activation(
+            "tanh",
+            dtype="float32",
         )(x)
 
         model = Model(inputs=lr_input, outputs=hr_output, name="generator")
         model.summary()
 
         return model
+
+    def content_loss(self, hr_img, hr_generated):
+        return super().content_loss(hr_img, hr_generated) * 0.001

@@ -1,10 +1,8 @@
 import os
 import random
-from concurrent.futures import ThreadPoolExecutor
 from glob import glob
 
 import tensorflow as tf
-from tqdm import tqdm
 
 from util.data_util import (
     USMSharp,
@@ -69,6 +67,9 @@ class DataLoader:
         # 数据增强
         for _ in range(self.data_enhancement_factor):
             train_resource_path_list += ori_train_resource_path_list
+        assert self.batch_size <= len(
+            train_resource_path_list
+        ), "batch_size must be <= train_data_num"
         # # 处理图片
         # train_lr_img_list, train_hr_img_list = self.process_img_data(
         #     train_resource_path_list,
@@ -83,12 +84,14 @@ class DataLoader:
         #     .batch(self.batch_size)  # 批次大小
         #     .prefetch(tf.data.experimental.AUTOTUNE)  # 预存数据来提升性能
         # )
+
         self.train_data = (
             tf.data.Dataset.from_tensor_slices((train_resource_path_list))
             .map(
                 lambda image_path: self.process_img_data_worker(
                     image_path, self.train_hr_img_height, self.train_hr_img_width
-                )
+                ),
+                num_parallel_calls=tf.data.experimental.AUTOTUNE,
             )
             .shuffle(len(train_resource_path_list))
             .batch(self.batch_size)
@@ -102,6 +105,9 @@ class DataLoader:
         test_resource_path_list = sorted(
             glob(os.path.join(self.test_resource_path, "*[.png]"))
         )
+        assert self.batch_size <= len(
+            test_resource_path_list
+        ), "batch_size must be <= test_data_num"
         # # 处理图片
         # test_lr_img_list, test_hr_img_list = self.process_img_data(
         #     test_resource_path_list,
@@ -134,95 +140,94 @@ class DataLoader:
                 ),
                 num_parallel_calls=tf.data.experimental.AUTOTUNE,
             )
-            .shuffle(len(test_resource_path_list))
             .batch(self.batch_size)
             .prefetch(tf.data.experimental.AUTOTUNE)
         )
 
-    def process_img_data(
-        self,
-        resource_path_list,
-        hr_img_height,
-        hr_img_width,
-        is_random_flip=True,
-        is_random_crop=True,
-        is_random_rot=True,
-        is_center_crop=False,
-        mode="train",
-    ):
-        """处理图片数据
+    # def process_img_data(
+    #     self,
+    #     resource_path_list,
+    #     hr_img_height,
+    #     hr_img_width,
+    #     is_random_flip=True,
+    #     is_random_crop=True,
+    #     is_random_rot=True,
+    #     is_center_crop=False,
+    #     mode="train",
+    # ):
+    #     """处理图片数据
 
-        Args:
-            resource_path_list (_type_): 图片路径列表
-            is_random_flip (bool, optional): 是否随机翻转. Defaults to True.
-            is_random_crop (bool, optional): 是否随机裁剪. Defaults to True.
-            is_center_crop (bool, optional): 是否中心裁剪. Defaults to False.
+    #     Args:
+    #         resource_path_list (_type_): 图片路径列表
+    #         is_random_flip (bool, optional): 是否随机翻转. Defaults to True.
+    #         is_random_crop (bool, optional): 是否随机裁剪. Defaults to True.
+    #         is_center_crop (bool, optional): 是否中心裁剪. Defaults to False.
 
-        Raises:
-            Exception: 图片格式错误
+    #     Raises:
+    #         Exception: 图片格式错误
 
-        Returns:
-            tf.Tensor, tf.Tensor: 下采样图片列表，原始图片列表
-        """
-        if (mode == "train" and self.downsample_mode == "bicubic") or (mode == "test"):
-            # 下采样图片列表
-            lr_img_list = tf.constant(
-                0,
-                shape=[
-                    0,
-                    hr_img_height // self.scale_factor,
-                    hr_img_width // self.scale_factor,
-                    3,
-                ],
-                dtype=tf.float32,
-            )
-            # 原图列表
-            hr_img_list = tf.constant(
-                0,
-                shape=[0, hr_img_height, hr_img_width, 3],
-                dtype=tf.float32,
-            )
-        elif mode == "train" and self.downsample_mode == "second-order":
-            # 下采样图片列表
-            lr_img_list = tf.constant(
-                0,
-                shape=[0, 400, 400, 3],
-                dtype=tf.float32,
-            )
-            # 原图列表
-            hr_img_list = tf.constant(
-                0,
-                shape=[0, 400, 400, 3],
-                dtype=tf.float32,
-            )
-        else:
-            raise ValueError("Unsupported image process mode!")
+    #     Returns:
+    #         tf.Tensor, tf.Tensor: 下采样图片列表，原始图片列表
+    #     """
+    #     if (mode == "train" and self.downsample_mode == "bicubic") or (mode == "test"):
+    #         # 下采样图片列表
+    #         lr_img_list = tf.constant(
+    #             0,
+    #             shape=[
+    #                 0,
+    #                 hr_img_height // self.scale_factor,
+    #                 hr_img_width // self.scale_factor,
+    #                 3,
+    #             ],
+    #             dtype=tf.float32,
+    #         )
+    #         # 原图列表
+    #         hr_img_list = tf.constant(
+    #             0,
+    #             shape=[0, hr_img_height, hr_img_width, 3],
+    #             dtype=tf.float32,
+    #         )
+    #     elif mode == "train" and self.downsample_mode == "second-order":
+    #         # 下采样图片列表
+    #         lr_img_list = tf.constant(
+    #             0,
+    #             shape=[0, 400, 400, 3],
+    #             dtype=tf.float32,
+    #         )
+    #         # 原图列表
+    #         hr_img_list = tf.constant(
+    #             0,
+    #             shape=[0, 400, 400, 3],
+    #             dtype=tf.float32,
+    #         )
+    #     else:
+    #         raise ValueError("Unsupported image process mode!")
 
-        # 多线程处理图片
-        pbar = tqdm(total=len(resource_path_list))  # 创建进度条
-        with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            for (lr_img, hr_img) in pool.map(
-                self.process_img_data_worker,
-                resource_path_list,
-                [hr_img_height] * len(resource_path_list),
-                [hr_img_width] * len(resource_path_list),
-                [is_random_flip] * len(resource_path_list),
-                [is_random_crop] * len(resource_path_list),
-                [is_random_rot] * len(resource_path_list),
-                [is_center_crop] * len(resource_path_list),
-                [mode] * len(resource_path_list),
-            ):
-                # 扩大维度
-                lr_img = tf.expand_dims(lr_img, axis=0)
-                hr_img = tf.expand_dims(hr_img, axis=0)
-                # 拼接张量
-                lr_img_list = tf.concat([lr_img_list, lr_img], axis=0)
-                hr_img_list = tf.concat([hr_img_list, hr_img], axis=0)
-                # 更新进度条
-                pbar.update(1)
-            pbar.close()  # 关闭进度条
+    #     # 多线程处理图片
+    #     pbar = tqdm(total=len(resource_path_list))  # 创建进度条
+    #     with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+    #         for (lr_img, hr_img) in pool.map(
+    #             self.process_img_data_worker,
+    #             resource_path_list,
+    #             [hr_img_height] * len(resource_path_list),
+    #             [hr_img_width] * len(resource_path_list),
+    #             [is_random_flip] * len(resource_path_list),
+    #             [is_random_crop] * len(resource_path_list),
+    #             [is_random_rot] * len(resource_path_list),
+    #             [is_center_crop] * len(resource_path_list),
+    #             [mode] * len(resource_path_list),
+    #         ):
+    #             # 扩大维度
+    #             lr_img = tf.expand_dims(lr_img, axis=0)
+    #             hr_img = tf.expand_dims(hr_img, axis=0)
+    #             # 拼接张量
+    #             lr_img_list = tf.concat([lr_img_list, lr_img], axis=0)
+    #             hr_img_list = tf.concat([hr_img_list, hr_img], axis=0)
+    #             # 更新进度条
+    #             pbar.update(1)
+    #         pbar.close()  # 关闭进度条
 
-        return lr_img_list, hr_img_list
+    #     return lr_img_list, hr_img_list
 
     def process_img_data_worker(
         self,
@@ -524,7 +529,13 @@ class DataLoader:
         return hr_imgs, lr_imgs
 
     def feed_second_order_data(
-        self, hr_img, crop_img_height, crop_img_width, is_random_crop, is_center_crop
+        self,
+        hr_img,
+        crop_img_height,
+        crop_img_width,
+        is_random_crop,
+        is_center_crop,
+        is_usm=True,
     ):
         """
         获取二阶退化数据
@@ -549,8 +560,9 @@ class DataLoader:
         sinc_kernels = tf.convert_to_tensor(sinc_kernels)
 
         # 锐化
-        usm_sharpener = USMSharp()
-        hr_img = usm_sharpener.sharp(hr_img)
+        if is_usm:
+            usm_sharpener = USMSharp()
+            hr_img = usm_sharpener.sharp(hr_img)
 
         # 获取最初图像的数量、高和宽
         batch, ori_height, ori_width, _ = tf.shape(hr_img)
@@ -627,7 +639,7 @@ class PoolData:
 
     def get_pool_data(self, new_lr_imgs, new_hr_imgs):
         # 若数据池为空，则初始化数据池
-        if self.queue_gt == None:
+        if self.queue_gt is None:
             self.queue_lr = new_lr_imgs
             self.queue_gt = new_hr_imgs
 
@@ -643,17 +655,16 @@ class PoolData:
             self.queue_gt = tf.gather(self.queue_gt, self.idx)
 
             # 从数据池中抽取数据
-            o_new_lr_imgs = self.queue_lr[0 : self.batch_size]
-            o_new_hr_imgs = self.queue_gt[0 : self.batch_size]
+            o_new_lr_imgs = self.queue_lr[0 : new_lr_imgs.shape[0]]
+            o_new_hr_imgs = self.queue_gt[0 : new_hr_imgs.shape[0]]
 
             # 在数据池中加入新数据
             self.queue_lr = tf.concat(
-                [self.queue_lr[self.batch_size :], new_lr_imgs], axis=0
+                [self.queue_lr[new_lr_imgs.shape[0] :], new_lr_imgs], axis=0
             )
             self.queue_gt = tf.concat(
-                [self.queue_gt[self.batch_size :], new_hr_imgs], axis=0
+                [self.queue_gt[new_hr_imgs.shape[0] :], new_hr_imgs], axis=0
             )
-
             assert self.queue_gt.shape[0] == self.pool_size
 
             return (
@@ -664,5 +675,11 @@ class PoolData:
         else:
             self.queue_lr = tf.concat([self.queue_lr, new_lr_imgs], axis=0)
             self.queue_gt = tf.concat([self.queue_gt, new_hr_imgs], axis=0)
+
+            # 由于每次入池的数据量可能小于批次大小，故需要考虑数据池溢出的情况
+            if self.queue_gt.shape[0] > self.pool_size:
+                self.queue_lr = self.queue_lr[self.queue_lr.shape[0] - self.pool_size :]
+                self.queue_gt = self.queue_gt[self.queue_gt.shape[0] - self.pool_size :]
+                assert self.queue_gt.shape[0] == self.pool_size
 
             return new_lr_imgs, new_hr_imgs

@@ -1,11 +1,16 @@
 import json
-from model.real_esrgan import RealESRGAN
-from model.srgan import SRGAN
+import os
+
 from model.esrgan import ESRGAN
+from model.real_esrgan import RealESRGAN
 from model.rs_esrgan import RS_ESRGAN
+from model.srgan import SRGAN
 from util.toml import parse_toml
 
-# import os
+# 日志级别
+# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+
+# 是否使用 GPU
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
@@ -60,5 +65,12 @@ if __name__ == "__main__":
     config = parse_toml("./config/config.toml")  # 读取 toml 配置文件
     sr_model = build_sr_model(config)  # 构建超分模型
 
-    # sr_model.pretrain()  # 开始预训练
-    sr_model.train() # 开始训练
+    mode = config["model"]["mode"]  # 获取训练模式
+    if mode == "pretrain":
+        sr_model.pretrain()  # 开始预训练
+    elif mode == "train":
+        sr_model.train()  # 开始训练
+    else:
+        raise ValueError(
+            "Unsupported mode, please set the mode to 'pretrain' or 'train'."
+        )

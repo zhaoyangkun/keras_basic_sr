@@ -1,37 +1,43 @@
 # 数据集
 [dataset]
 downsample_mode = "second-order"                                     # 下采样方式（"bicubic"、"second-order"）
-train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR" # 训练图片资源路径
+train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
 test_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
-scale_factor = 4                                                     # 下采样倍数
-train_hr_img_height = 128                                            # 训练过程中原图高度
-train_hr_img_width = 128                                             # 训练过程中原图宽度
-valid_hr_img_height = 128                                            # 验证过程中原图高度
-valid_hr_img_width = 128                                             # 验证过程中原图宽度
-max_workers = 2                                                      # 处理图片的最大线程数
-data_enhancement_factor = 1                                          # 数据增强因子
+# train_resource_path = "/home/hh/zyk/datasets/DF_2K/train_HR" # 训练图片资源路径
+# test_resource_path = "/home/hh/zyk/datasets/DF_2K/valid_HR"  # 测试图片资源路径
+scale_factor = 4            # 下采样倍数
+train_hr_img_height = 128   # 训练过程中原图高度
+train_hr_img_width = 128    # 训练过程中原图宽度
+valid_hr_img_height = 128   # 验证过程中原图高度
+valid_hr_img_width = 128    # 验证过程中原图宽度
+max_workers = 4             # 处理图片的最大线程数
+data_enhancement_factor = 1 # 数据增强因子
+
 
 # 模型
 [model]
 model_name = "real-esrgan" # 模型名称（"srgan"、"esrgan"、"real-esrgan"、"rs-esrgan"）
+mode = "pretrain"          # 训练模式（"pretrain"、"train"）
 
 # SRGAN
 [model.srgan]
 result_path = "./result"  # 结果保存路径
-epochs = 2000             # 训练总轮数
+epochs = 1000             # 训练总轮数
 init_epoch = 1            # 初始训练轮数
-batch_size = 1            # 单次训练样本数
+batch_size = 4            # 单次训练样本数
 rdb_num = 16              # 残差块数目
 log_interval = 20         # 打印日志间隔
 save_images_interval = 1  # 保存图片间隔
 save_models_interval = 1  # 保存模型间隔
 save_history_interval = 1 # 保存历史数据（损失，准确率）间隔
-use_mixed_float = false   # 是否使用混合精度
+pretrain_model_path = ""  # 预训练模型路径
+use_sn = true             # 是否使用谱归一化层
+use_mixed_float = true    # 是否使用混合精度
 
 # ESRGAN
 [model.esrgan]
 result_path = "./result"  # 结果保存路径
-epochs = 5000             # 训练总轮数
+epochs = 1000             # 训练总轮数
 init_epoch = 1            # 初始训练轮数
 batch_size = 4            # 单次训练样本数
 log_interval = 20         # 打印日志间隔
@@ -44,17 +50,17 @@ use_mixed_float = true    # 是否使用混合精度
 
 # Real-ESRGAN
 [model.real-esrgan]
-result_path = "./result"  # 结果保存路径
-batch_size = 4            # 单次训练样本数
-epochs = 5000             # 训练总轮数
-init_epoch = 1            # 初始训练轮数
-log_interval = 20         # 打印日志间隔
-save_images_interval = 5  # 保存图片间隔
-save_models_interval = 5  # 保存模型间隔
-save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
-pretrain_model_path = ""  # 预训练模型路径
-use_sn = true             # 是否使用谱归一化层
-use_mixed_float = true    # 是否使用混合精度
+result_path = "./result"   # 结果保存路径
+batch_size = 4             # 单次训练样本数
+epochs = 1000              # 训练总轮数
+init_epoch = 1             # 初始训练轮数
+log_interval = 20          # 打印日志间隔
+save_images_interval = 20  # 保存图片间隔
+save_models_interval = 20  # 保存模型间隔
+save_history_interval = 20 # 保存历史数据（损失，准确率）间隔
+pretrain_model_path = ""   # 预训练模型路径
+use_sn = true              # 是否使用谱归一化层
+use_mixed_float = true     # 是否使用混合精度
 
 # RS-ESRGAN
 [model.rs-esrgan]
@@ -77,12 +83,12 @@ final_sinc_prob = 0.8
 
 [second-order-degradation.kernel_props_1]
 kernel_list = [
-  "iso",
-  "aniso",
-  "generalized_iso",
-  "generalized_aniso",
-  "plateau_iso",
-  "plateau_aniso",
+    "iso",
+    "aniso",
+    "generalized_iso",
+    "generalized_aniso",
+    "plateau_iso",
+    "plateau_aniso",
 ]
 kernel_prob = [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
 sigma_x_range = [0.2, 3.0]
@@ -93,12 +99,12 @@ sinc_prob = 0.1
 
 [second-order-degradation.kernel_props_2]
 kernel_list = [
-  "iso",
-  "aniso",
-  "generalized_iso",
-  "generalized_aniso",
-  "plateau_iso",
-  "plateau_aniso",
+    "iso",
+    "aniso",
+    "generalized_iso",
+    "generalized_aniso",
+    "plateau_iso",
+    "plateau_aniso",
 ]
 kernel_prob = [0.45, 0.25, 0.12, 0.03, 0.12, 0.03]
 sigma_x_range = [0.2, 1.5]
