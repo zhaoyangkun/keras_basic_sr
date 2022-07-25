@@ -135,8 +135,6 @@ class SRGAN(object):
         self.pool_data = PoolData(
             pool_size=10 * self.batch_size, batch_size=self.batch_size
         )
-        
-        self.
 
         # 创建 vgg 模型
         self.vgg = self.build_vgg()
@@ -590,7 +588,7 @@ class SRGAN(object):
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
                 # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
                 if self.downsample_mode == "second-order":
-                    start_time = datetime.datetime.now()
+                    # start_time = datetime.datetime.now()
                     lr_imgs, hr_imgs = self.data_loader.feed_second_order_data(
                         hr_imgs,
                         self.train_hr_img_height,
@@ -598,8 +596,8 @@ class SRGAN(object):
                         True,
                         False,
                     )
-                    end_time = datetime.datetime.now()
-                    print("second-order time:", end_time - start_time)
+                    # end_time = datetime.datetime.now()
+                    # print("second-order time:", end_time - start_time)
                     lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
                 # 单步预训练
                 loss = self.pretrain_step(lr_imgs, hr_imgs)
