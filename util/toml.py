@@ -18,5 +18,5 @@ def parse_toml(path):
     # 判断 toml 文件是否存在
     if not os.path.exists(path):
         raise FileNotFoundError(f"{path} does not exist")
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return toml.load(f)

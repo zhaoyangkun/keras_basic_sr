@@ -1,4 +1,4 @@
-import datetime
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 
@@ -31,9 +31,10 @@ from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader, PoolData
 from util.layer import create_vgg_19_features_model
 from util.logger import create_logger
+from util.toml import parse_toml
 
 
-class SRGAN(object):
+class SRGAN:
     """
     SRGAN 模型类
     """
@@ -582,6 +583,8 @@ class SRGAN(object):
         )
         # print("len of train_data):", len(self.data_loader.train_data))
         # print("downsample_mode:", self.downsample_mode)
+        config = parse_toml("./config/config.toml")
+        degration_config = config["second-order-degradation"]
         for epoch in range(self.init_epoch, self.epochs + 1):
             loss_batch_total = tf.constant(0, dtype=tf.float32)
             # 加载训练数据集，并训练
@@ -591,6 +594,7 @@ class SRGAN(object):
                     # start_time = datetime.datetime.now()
                     lr_imgs, hr_imgs = self.data_loader.feed_second_order_data(
                         hr_imgs,
+                        degration_config,
                         self.train_hr_img_height,
                         self.train_hr_img_width,
                         True,
@@ -676,7 +680,9 @@ class SRGAN(object):
                     save_models_dir_path, "dis_model_epoch_%d" % self.init_epoch
                 )
             )
-
+            
+        config = parse_toml("./config/config.toml")
+        degration_config = config["second-order-degradation"]
         epoch_list = tf.constant([])
         g_loss_list = tf.constant([], dtype=tf.float32)
         d_loss_list = tf.constant([], dtype=tf.float32)
@@ -700,6 +706,7 @@ class SRGAN(object):
                 if self.downsample_mode == "second-order":
                     lr_imgs, hr_imgs = self.data_loader.feed_second_order_data(
                         hr_imgs,
+                        degration_config,
                         self.train_hr_img_height,
                         self.train_hr_img_width,
                         True,

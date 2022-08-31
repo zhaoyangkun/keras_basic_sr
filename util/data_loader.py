@@ -350,6 +350,22 @@ class DataLoader:
                 hr_img = tf.image.crop_to_bounding_box(
                     hr_img, top, left, crop_pad_size, crop_pad_size
                 )
+            # # 升维
+            # hr_img = tf.expand_dims(hr_img, axis=0)
+            # # 读取二阶退化模型相关参数
+            # config = parse_toml("./config/config.toml")
+            # degration_config = config["second-order-degradation"]
+            # # 二阶退化
+            # lr_img, hr_img = self.feed_second_order_data(
+            #     hr_img,
+            #     degration_config,
+            #     self.train_hr_img_height,
+            #     self.train_hr_img_width,
+            #     True,
+            #     False,
+            # )
+            # # 降维
+            # lr_img, hr_img = tf.squeeze(lr_img, axis=0), tf.squeeze(hr_img, axis=0)
             lr_img = tf.zeros_like(hr_img)
 
         else:
@@ -531,6 +547,7 @@ class DataLoader:
     def feed_second_order_data(
         self,
         hr_img,
+        degration_config,
         crop_img_height,
         crop_img_width,
         is_random_crop,
@@ -540,24 +557,24 @@ class DataLoader:
         """
         获取二阶退化数据
         """
-        # 读取二阶退化模型相关参数
-        config = parse_toml("./config/config.toml")
-        degration_config = config["second-order-degradation"]
-
         # 创建相关核
-        first_blur_kernels = []
-        second_blur_kernels = []
-        sinc_kernels = []
+        first_blur_kernels = tf.constant(0, shape=[0, 21, 21], dtype=tf.float32)
+        second_blur_kernels = tf.constant(0, shape=[0, 21, 21], dtype=tf.float32)
+        sinc_kernels = tf.constant(0, shape=[0, 21, 21], dtype=tf.float32)
         for _ in range(tf.shape(hr_img)[0]):
             first_blur_kernel = generate_kernel(degration_config["kernel_props_1"])
             second_blur_kernel = generate_kernel(degration_config["kernel_props_2"])
             sinc_kernel = generate_sinc_kernel(degration_config["final_sinc_prob"])
-            first_blur_kernels.append(first_blur_kernel)
-            second_blur_kernels.append(second_blur_kernel)
-            sinc_kernels.append(sinc_kernel)
-        first_blur_kernels = tf.convert_to_tensor(first_blur_kernels)
-        second_blur_kernels = tf.convert_to_tensor(second_blur_kernels)
-        sinc_kernels = tf.convert_to_tensor(sinc_kernels)
+            first_blur_kernels = tf.concat(
+                [first_blur_kernels, tf.expand_dims(first_blur_kernel, axis=0)], axis=0
+            )
+            second_blur_kernels = tf.concat(
+                [second_blur_kernels, tf.expand_dims(second_blur_kernel, axis=0)],
+                axis=0,
+            )
+            sinc_kernels = tf.concat(
+                [sinc_kernels, tf.expand_dims(sinc_kernel, axis=0)], axis=0
+            )
 
         # 锐化
         if is_usm:
