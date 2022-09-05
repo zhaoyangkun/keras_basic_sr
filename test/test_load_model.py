@@ -6,7 +6,6 @@ from matplotlib import pyplot as plt
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-
 # gpus = tf.config.list_physical_devices("GPU")
 # if gpus:
 #     # Restrict TensorFlow to only allocate 1GB of memory on the first GPU

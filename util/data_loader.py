@@ -620,10 +620,6 @@ class DataLoader:
                 hr_img, lr_img, crop_img_height, crop_img_width
             )
 
-        # # 降维
-        # hr_img = tf.squeeze(hr_img, axis=0)
-        # lr_img = tf.squeeze(lr_img, axis=0)
-
         # 将归一化区间从 [0, 1] 调整到 [-1, 1]
         hr_img = tf.clip_by_value(tf.math.round(hr_img * 255), 0, 255) / 127.5 - 1
         lr_img = tf.clip_by_value(tf.math.round(lr_img * 255), 0, 255) / 127.5 - 1

@@ -198,7 +198,7 @@ class RealESRGAN(ESRGAN):
         )  # (h, w, 1)
 
         model = Model(inputs=input, outputs=out, name="discriminator")
-        model.summary()
+        # model.summary()
 
         return model
 

@@ -112,7 +112,7 @@ class RS_ESRGAN(RealESRGAN):
         )(x)
 
         model = Model(inputs=lr_input, outputs=hr_output, name="generator")
-        model.summary()
+        # model.summary()
 
         return model
 

@@ -16,6 +16,7 @@ def spectral_norm_conv2d(input, use_sn=True, sn_dtype=None, **kwargs):
     else:
         return Conv2D(**kwargs)(input)
 
+
 def subpixel_conv2d(name, scale=2):
     """亚像素卷积层
 
@@ -29,7 +30,7 @@ def subpixel_conv2d(name, scale=2):
             input_shape[0],
             None if input_shape[1] is None else input_shape[1] * scale,
             None if input_shape[2] is None else input_shape[2] * scale,
-            int(input_shape[3] / (scale**2)),
+            int(input_shape[3] / (scale ** 2)),
         ]
         output_shape = tuple(dims)
         return output_shape
@@ -38,6 +39,7 @@ def subpixel_conv2d(name, scale=2):
         return tf.nn.depth_to_space(x, scale)
 
     return Lambda(subpixel, output_shape=subpixel_shape, name=name)
+
 
 # 上采样
 def upsample(x, number, channels=64):
@@ -52,6 +54,7 @@ def upsample(x, number, channels=64):
     x = PReLU(shared_axes=[1, 2], name="up_sample_prelu_" + str(number))(x)
 
     return x
+
 
 # 交替上采样 + RFB
 def upsample_rfb(x, number, method="nearest", channels=64):
@@ -89,6 +92,7 @@ def upsample_rfb(x, number, method="nearest", channels=64):
         raise ValueError("Unsupported upsample method!")
 
     return x
+
 
 # 构建 dense block
 def dense_block(input):
@@ -139,6 +143,7 @@ def dense_block(input):
 
     return output
 
+
 # 构建 RRDB
 def RRDB(input):
     x = dense_block(input)
@@ -148,6 +153,7 @@ def RRDB(input):
     out = Add()([x, input])
 
     return out
+
 
 # 构建 RFB
 def RFB(input, in_channels=64, out_channels=32):
@@ -263,6 +269,7 @@ def RFB(input, in_channels=64, out_channels=32):
 
     return output
 
+
 # 构建 RFDB
 def RFDB(input, in_channels=64, growth_channels=32):
     x_1 = RFB(
@@ -307,6 +314,7 @@ def RFDB(input, in_channels=64, growth_channels=32):
 
     return output
 
+
 # 构建 RRFDB
 def RRFDB(input, input_channels=64, growth_channels=32):
     x = RFDB(input, input_channels, growth_channels)
@@ -317,6 +325,7 @@ def RRFDB(input, input_channels=64, growth_channels=32):
     output = Add()([x, input])
 
     return output
+
 
 # 构建 VGG19 模型
 def create_vgg19_custom_model():
@@ -370,6 +379,7 @@ def create_vgg19_custom_model():
 
     return Model(input, x, name="vgg19_features")
 
+
 # 构建 vgg_19 特征提取模型
 def create_vgg_19_features_model(loss_type="srgan"):
     original_vgg = VGG19(
@@ -378,7 +388,7 @@ def create_vgg_19_features_model(loss_type="srgan"):
     )
     vgg_model = create_vgg19_custom_model()
     vgg_model.set_weights(original_vgg.get_weights())
-    
+
     if loss_type == "srgan":
         outputs = vgg_model.get_layer("block5_conv4_relu").output
     elif loss_type == "esrgan":
@@ -394,11 +404,50 @@ def create_vgg_19_features_model(loss_type="srgan"):
         outputs = [vgg_model.get_layer(name).output for name in layers]
 
     model = Model([vgg_model.input], outputs)
-    
+
     model.trainable = False
-    
+
     return model
 
+
+# EMA
+class EMA:
+    def __init__(self, model, decay):
+        self.model = model
+        self.decay = decay
+        self.shadow = {}
+        self.backup = {}
+        self.register()
+
+    # 注册所有需要跟踪的变量
+    def register(self):
+        for param in self.model.variables:
+            if param.trainable:
+                self.shadow[param.name] = param.value()
+
+    # 每次变量的值改变后更新影子变量的值
+    def update(self):
+        for param in self.model.variables:
+            if param.trainable:
+                assert param.name in self.shadow
+                new_average = (1.0 - self.decay) * param.value() + self.decay * self.shadow[param.name]
+                self.shadow[param.name] = new_average
+
+    # 将模型参数变成影子值，backup是真实值的备份
+    def apply_shadow(self):
+        for param in self.model.variables:
+            if param.trainable:
+                assert param.name in self.shadow
+                self.backup[param.name] = param.value()
+                param.assign(self.shadow[param.name])
+
+    # 将模型的参数变回真实值
+    def restore(self):
+        for param in self.model.variables:
+            if param.trainable:
+                assert param.name in self.backup
+                param.assign(self.backup[param.name])
+        self.backup = {}
 
 # # 谱归一化层
 # class SpectralNorm(tf.keras.constraints.Constraint):
@@ -415,4 +464,3 @@ def create_vgg_19_features_model(loss_type="srgan"):
 #             u /= tf.norm(u)
 #         spec_norm = tf.matmul(u, tf.matmul(w, v), transpose_a=True)
 #         return input_weights / spec_norm
-    

@@ -157,7 +157,7 @@ class ESRGAN(SRGAN):
         )(x)
 
         model = Model(inputs=lr_img, outputs=sr_img, name="generator")
-        model.summary()
+        # model.summary()
 
         return model
 
@@ -223,7 +223,7 @@ class ESRGAN(SRGAN):
         x = Dense(1, dtype="float32")(x)  # (1)
 
         model = Model(inputs=img, outputs=x, name="discriminator")
-        model.summary()
+        # model.summary()
 
         return model
 

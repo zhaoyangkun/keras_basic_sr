@@ -29,7 +29,7 @@ from tensorflow.keras.losses import (
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader, PoolData
-from util.layer import create_vgg_19_features_model
+from util.layer import EMA, create_vgg_19_features_model
 from util.logger import create_logger
 from util.toml import parse_toml
 
@@ -64,6 +64,7 @@ class SRGAN:
         pretrain_model_path="",
         use_mixed_float=False,
         use_sn=False,
+        use_ema=False,
     ):
         self.model_name = model_name  # 模型名称
         self.result_path = result_path  # 结果保存路径
@@ -96,6 +97,7 @@ class SRGAN:
         self.pretrain_model_path = pretrain_model_path  # 预训练模型路径
         self.use_mixed_float = use_mixed_float  # 是否使用混合精度
         self.use_sn = use_sn  # 是否使用谱归一化
+        self.use_ema = use_ema # 是否使用 EMA
 
         # 创建日志记录器
         log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
@@ -143,12 +145,12 @@ class SRGAN:
         # 创建生成器
         self.generator = self.build_generator()
         # 输出生成器网络结构
-        self.generator.summary()
+        # self.generator.summary()
 
         # 创建判别器
         self.discriminator = self.build_discriminator()
         # 输出判别器网络结构
-        self.discriminator.summary()
+        # self.discriminator.summary()
 
         # # 构建联合模型
         # self.combined = self.build_combined()
@@ -620,6 +622,8 @@ class SRGAN:
                         )
                     )
 
+            # if self.use_ema:
+                
             # 统计 epoch 和 loss
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             loss_list = tf.concat(
@@ -968,8 +972,10 @@ class SRGAN:
         fig, axs = plt.subplots(take_num, 3)
         for i, (lr_img, hr_img) in enumerate(test_dataset):
             # 利用生成器生成图片
-            sr_img = self.generator.predict(tf.expand_dims(lr_img, 0))
+            lr_img = tf.expand_dims(lr_img, axis=0)
+            sr_img = self.generator(lr_img, training=False)
             sr_img = tf.squeeze(sr_img, axis=0)
+            lr_img = tf.squeeze(lr_img, axis=0)
 
             # 反归一化
             lr_img, hr_img, sr_img = (

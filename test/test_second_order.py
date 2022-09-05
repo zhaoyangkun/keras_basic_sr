@@ -1,30 +1,31 @@
 import sys
 
 from matplotlib import pyplot as plt
-
 sys.path.append("./")
-import tensorflow as tf
-from util.data_loader import DataLoader, PoolData
+from util.toml import parse_toml
 
+import tensorflow as tf
+from util.data_loader import DataLoader
 
 # 创建构建数据集对象
 dataloader = DataLoader(
-    train_resource_path="/run/media/zyk/Data/数据集/DIV2K/test",
-    test_resource_path="/run/media/zyk/Data/数据集/DIV2K/test",
+    train_resource_path="/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR",
+    test_resource_path="/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR",
     batch_size=4,
     downsample_mode="second-order",
-    train_hr_img_height=128,
-    train_hr_img_width=128,
-    valid_hr_img_height=128,
-    valid_hr_img_width=128,
+    train_hr_img_height=256,
+    train_hr_img_width=256,
+    valid_hr_img_height=256,
+    valid_hr_img_width=256,
     scale_factor=4,
     max_workers=4,
 )
 
 # pool_data = PoolData(16, dataloader.batch_size)
 
-take_num = 3
-
+config = parse_toml("./config/config.toml")
+degration_config = config["second-order-degradation"]
+take_num = 4
 fig, axs = plt.subplots(take_num, 4)
 for i, (lr_img, hr_img) in enumerate(dataloader.test_data.unbatch().skip(2).take(take_num)):
     lr_img_bicubic = tf.expand_dims(lr_img, axis=0)
@@ -32,6 +33,7 @@ for i, (lr_img, hr_img) in enumerate(dataloader.test_data.unbatch().skip(2).take
 
     lr_img_second_order, usm_hr_img = dataloader.feed_second_order_data(
         (hr_img + 1) / 2,
+        degration_config,
         dataloader.train_hr_img_height,
         dataloader.train_hr_img_width,
         False,

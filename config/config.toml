@@ -1,15 +1,15 @@
 # 数据集
 [dataset]
-downsample_mode = "second-order"                    # 下采样方式（"bicubic"、"second-order"）
-train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
+downsample_mode = "second-order"                                     # 下采样方式（"bicubic"、"second-order"）
+train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR" # 训练图片资源路径
 test_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
 # train_resource_path = "/home/hh/zyk/datasets/DF_2K/train_HR" # 训练图片资源路径
 # test_resource_path = "/home/hh/zyk/datasets/DF_2K/valid_HR"  # 测试图片资源路径
 scale_factor = 4            # 下采样倍数
-train_hr_img_height = 128   # 训练过程中原图高度
-train_hr_img_width = 128    # 训练过程中原图宽度
-valid_hr_img_height = 128   # 验证过程中原图高度
-valid_hr_img_width = 128    # 验证过程中原图宽度
+train_hr_img_height = 256   # 训练过程中原图高度
+train_hr_img_width = 256    # 训练过程中原图宽度
+valid_hr_img_height = 256   # 验证过程中原图高度
+valid_hr_img_width = 256    # 验证过程中原图宽度
 max_workers = 4             # 处理图片的最大线程数
 data_enhancement_factor = 1 # 数据增强因子
 
@@ -33,6 +33,7 @@ save_history_interval = 1 # 保存历史数据（损失，准确率）间隔
 pretrain_model_path = ""  # 预训练模型路径
 use_sn = true             # 是否使用谱归一化层
 use_mixed_float = true    # 是否使用混合精度
+use_ema = false               # 是否使用 EMA
 
 # ESRGAN
 [model.esrgan]
@@ -47,6 +48,7 @@ save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
 pretrain_model_path = ""  # 预训练模型路径
 use_sn = true             # 是否使用谱归一化层
 use_mixed_float = true    # 是否使用混合精度
+use_ema = false               # 是否使用 EMA
 
 # Real-ESRGAN
 [model.real-esrgan]
@@ -60,7 +62,8 @@ save_models_interval = 1  # 保存模型间隔
 save_history_interval = 1 # 保存历史数据（损失，准确率）间隔
 pretrain_model_path = ""  # 预训练模型路径
 use_sn = true             # 是否使用谱归一化层
-use_mixed_float = true   # 是否使用混合精度
+use_mixed_float = true    # 是否使用混合精度
+use_ema = true                # 是否使用 EMA
 
 # RS-ESRGAN
 [model.rs-esrgan]
@@ -75,6 +78,7 @@ save_history_interval = 1 # 保存历史数据（损失，准确率）间隔
 pretrain_model_path = ""  # 预训练模型路径
 use_sn = true             # 是否使用谱归一化层
 use_mixed_float = true    # 是否使用混合精度
+use_ema = true                # 是否使用 EMA
 
 
 # 二阶退化模型
