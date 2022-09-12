@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import time
@@ -30,9 +29,9 @@ from tensorflow.keras.losses import (
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader, PoolData
-from util.layer import EMA, create_vgg_19_features_model
+from util.layer import create_vgg_19_features_model
 from util.logger import create_logger
-from util.metric import calculate_psnr, calculate_ssim
+from util.metric import cal_psnr_tf, cal_ssim_tf
 from util.toml import parse_toml
 
 
@@ -375,13 +374,21 @@ class SRGAN:
             hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
             gen_img = tf.cast((gen_img + 1) * 127.5, dtype=tf.uint8)
 
-            # 计算 psnr，ssim
-            psnr = calculate_psnr(
-                hr_img, gen_img, crop_border=0, input_order="HWC", test_y_channel=True
-            )
-            ssim = calculate_ssim(
-                hr_img, gen_img, crop_border=0, input_order="HWC", test_y_channel=True
-            )
+            # # 计算 psnr，ssim
+            # psnr = calculate_psnr(
+            #     hr_img,
+            #     gen_img,
+            #     crop_border=0,
+            #     input_order="HWC",
+            #     test_y_channel=True,
+            # )
+            # ssim = calculate_ssim(
+            #     hr_img,
+            #     gen_img,
+            #     crop_border=0,
+            #     input_order="HWC",
+            #     test_y_channel=True,
+            # )
             # psnr = tf.reduce_mean(tf.image.psnr(hr_img, gen_img, max_val=1.0))
             # ssim = tf.reduce_mean(tf.image.ssim(hr_img, gen_img, max_val=1.0))
 
@@ -415,7 +422,7 @@ class SRGAN:
             zip(gradients_discriminator, self.discriminator.trainable_variables)
         )
 
-        return generator_total_loss, discriminator_loss, psnr, ssim
+        return generator_total_loss, discriminator_loss, hr_img, gen_img
 
     # def train_old(self):
     #     """
@@ -622,7 +629,7 @@ class SRGAN:
                 if (batch_idx + 1) % self.log_interval == 0:
                     batch_end_time = time.time()
                     self.logger.info(
-                        "mode: pretrain, epochs: [%d/%d], batches: [%d/%d], loss: %.4f, time: %d"
+                        "mode: pretrain, epochs: [%d/%d], batches: [%d/%d], loss: %.4f, time: %ds"
                         % (
                             epoch,
                             self.epochs,
@@ -731,7 +738,13 @@ class SRGAN:
                     )
                     lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
 
-                g_loss, d_loss, psnr, ssim = self.train_step(lr_imgs, hr_imgs)
+                g_loss, d_loss, hr_img_list, gen_img_list = self.train_step(
+                    lr_imgs, hr_imgs
+                )
+
+                # 计算 PSNR 和 SSIM
+                psnr = cal_psnr_tf(hr_img_list, gen_img_list)
+                ssim = cal_ssim_tf(hr_img_list, gen_img_list)
 
                 g_loss_batch_total += g_loss
                 d_loss_batch_total += d_loss
@@ -857,15 +870,15 @@ class SRGAN:
         #     # 将数值类型从 float16 转换为 float32
         #     hr_generated = tf.cast(hr_generated, dtype=tf.float32)
 
-        # 将归一化区间从 [-1, 1] 转换到 [0, 1]
-        hr_img = (hr_img + 1) / 2
-        hr_generated = (hr_generated + 1) / 2
+        # 将归一化区间从 [-1, 1] 转换到 [0, 255]
+        hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
+        hr_generated = tf.cast((hr_generated + 1) * 127.5, dtype=tf.uint8)
 
-        # 计算 psnr 和 ssim
-        psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
-        ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
+        # # 计算 psnr 和 ssim
+        # psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
+        # ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
 
-        return psnr, ssim
+        return hr_img, hr_generated
 
     def evaluate(self, epoch):
         """
@@ -875,7 +888,10 @@ class SRGAN:
         psnr_total = tf.constant(0, dtype=tf.float32)
         ssim_total = tf.constant(0, dtype=tf.float32)
         for (lr_imgs, hr_imgs) in self.data_loader.test_data:
-            psnr, ssim = self.valid_step(lr_imgs, hr_imgs)
+            hr_img_list, gen_img_list = self.valid_step(lr_imgs, hr_imgs)
+            # 计算 PSNR 和 SSIM
+            psnr = cal_psnr_tf(hr_img_list, gen_img_list)
+            ssim = cal_ssim_tf(hr_img_list, gen_img_list)
             # 统计 PSNR 和 SSIM
             psnr_total += psnr
             ssim_total += ssim

@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-
 from util.metric_util import reorder_image, to_y_channel
 
 
@@ -132,3 +131,47 @@ def calculate_psnr(
     if mse == 0:
         return float("inf")
     return 10.0 * np.log10(255.0 * 255.0 / mse)
+
+
+def cal_psnr_tf(hr_img_list, gen_img_list):
+    """计算 psnr (Tensorflow)
+
+    Args:
+        hr_img_list (Tensor): 维度 (N, H, W, C)
+        gen_img_list (Tensor): 维度 (N, H, W, C)
+    """
+    psnr_list = []
+    for k in range(len(hr_img_list)):
+        hr_img = hr_img_list[k].numpy()
+        gen_img = gen_img_list[k].numpy()
+        psnr = calculate_psnr(
+            hr_img,
+            gen_img,
+            crop_border=0,
+            input_order="HWC",
+            test_y_channel=True,
+        )
+        psnr_list.append(psnr)
+    return sum(psnr_list) / len(psnr_list)
+
+
+def cal_ssim_tf(hr_img_list, gen_img_list):
+    """计算 ssim (Tensorflow)
+
+    Args:
+        hr_img_list (Tensor): 维度 (N, H, W, C)
+        gen_img_list (Tensor): 维度 (N, H, W, C)
+    """
+    ssim_list = []
+    for k in range(len(hr_img_list)):
+        hr_img = hr_img_list[k].numpy()
+        gen_img = gen_img_list[k].numpy()
+        ssim = calculate_ssim(
+            hr_img,
+            gen_img,
+            crop_border=0,
+            input_order="HWC",
+            test_y_channel=True,
+        )
+        ssim_list.append(ssim)
+    return sum(ssim_list) / len(ssim_list)
