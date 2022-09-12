@@ -12,7 +12,8 @@ def create_logger(log_dir_path, log_file_name, logging_name):
     # 若日志文件不存在，则创建
     log_file_path = os.path.join(log_dir_path, log_file_name)
     if not os.path.exists(log_file_path):
-        os.mknod(log_file_path)
+        # os.mknod(log_file_path)
+        open(log_file_path, "w").close()
 
     # 获取 logger 对象
     logger = logging.getLogger(logging_name)

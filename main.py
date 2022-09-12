@@ -7,8 +7,8 @@ from model.rs_esrgan import RS_ESRGAN
 from model.srgan import SRGAN
 from util.toml import parse_toml
 
-# # 日志级别
-# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+# 日志级别
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 
 # 是否使用 GPU
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"

@@ -34,6 +34,7 @@ class RealESRGAN(ESRGAN):
         pretrain_model_path="",
         use_mixed_float=False,
         use_sn=False,
+        use_ema=False,
     ):
         super().__init__(
             model_name,
@@ -59,6 +60,7 @@ class RealESRGAN(ESRGAN):
             pretrain_model_path,
             use_mixed_float,
             use_sn,
+            use_ema,
         )
         self.loss_weights = {"percept": 1, "gen": 0.1, "pixel": 1}
 

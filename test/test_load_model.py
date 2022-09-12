@@ -23,6 +23,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 sys.path.append("./")
 from util.data_loader import DataLoader
+from util.niqe import tf_niqe
 
 TAKE_NUM = 3
 
@@ -51,8 +52,12 @@ esrgan_generator = tf.keras.models.load_model(
     compile=False,
 )
 
+real_esrgan_generator = tf.keras.models.load_model(
+    "/home/zyk/下载/gen_model_epoch_20", compile=False
+)
+
 rs_esrgan_generator = tf.keras.models.load_model(
-    "/home/zyk/桌面/rs-esrgan-bicubic/gen_model_epoch_660",
+    "/run/media/zyk/Data/研究生资料/超分模型结果/rs-esrgan-bicubic/models/train/gen_model_epoch_1000",
     compile=False,
 )
 
@@ -69,16 +74,46 @@ for i, (lr_img, hr_img) in enumerate(test_dataset):
     esrgan_sr_img = esrgan_generator.predict(tf.expand_dims(lr_img, 0))
     esrgan_sr_img = tf.squeeze(esrgan_sr_img, axis=0)
 
+    real_esrgan_img = real_esrgan_generator.predict(tf.expand_dims(lr_img, 0))
+    real_esrgan_img = tf.squeeze(real_esrgan_img, axis=0)
+
     rs_esrgan_sr_img = rs_esrgan_generator.predict(tf.expand_dims(lr_img, 0))
     rs_esrgan_sr_img = tf.squeeze(rs_esrgan_sr_img, axis=0)
 
+    # print(
+    #     "NIQE ~ SRGAN: {:.2f}, ESRGAN: {:.2f}, RS-ESRGAN: {:.2f}, GT: {:.2f}".format(
+    #         tf_niqe(srgan_sr_img),
+    #         tf_niqe(esrgan_sr_img),
+    #         tf_niqe(rs_esrgan_sr_img),
+    #         tf_niqe(hr_img),
+    #     )
+    # )
+
     # 反归一化
-    lr_img, hr_img, srgan_sr_img, esrgan_sr_img, rs_esrgan_sr_img = (
+    lr_img, hr_img, srgan_sr_img, esrgan_sr_img, real_esrgan_img, rs_esrgan_sr_img = (
         tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((srgan_sr_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((esrgan_sr_img + 1) * 127.5, dtype=tf.uint8),
+        tf.cast((real_esrgan_img + 1) * 127.5, dtype=tf.uint8),
         tf.cast((rs_esrgan_sr_img + 1) * 127.5, dtype=tf.uint8),
+    )
+
+    print(
+        "PSNR ~ SRGAN: {:.2f}, ESRGAN: {:.2f}, REAL-ESRGAN: {:.2f}, RS-ESRGAN: {:.2f}".format(
+            tf.image.psnr(hr_img, srgan_sr_img, max_val=255),
+            tf.image.psnr(hr_img, esrgan_sr_img, max_val=255),
+            tf.image.psnr(hr_img, real_esrgan_img, max_val=255),
+            tf.image.psnr(hr_img, rs_esrgan_sr_img, max_val=255),
+        )
+    )
+    print(
+        "SSIM ~ SRGAN: {:.2f}, ESRGAN: {:.2f}, REAL-ESRGAN: {:.2f}, RS-ESRGAN: {:.2f}".format(
+            tf.image.ssim(hr_img, srgan_sr_img, max_val=255),
+            tf.image.ssim(hr_img, esrgan_sr_img, max_val=255),
+            tf.image.ssim(hr_img, real_esrgan_img, max_val=255),
+            tf.image.ssim(hr_img, rs_esrgan_sr_img, max_val=255),
+        )
     )
 
     axs[i, 0].imshow(lr_img)
@@ -96,10 +131,15 @@ for i, (lr_img, hr_img) in enumerate(test_dataset):
     if i == 0:
         axs[i, 2].set_title("ESRGAN")
 
-    axs[i, 3].imshow(rs_esrgan_sr_img)
+    axs[i, 3].imshow(real_esrgan_img)
     axs[i, 3].axis("off")
     if i == 0:
-        axs[i, 3].set_title("RS-ESRGAN")
+        axs[i, 3].set_title("REAL-ESRGAN")
+
+    # axs[i, 4].imshow(rs_esrgan_sr_img)
+    # axs[i, 4].axis("off")
+    # if i == 0:
+    #     axs[i, 4].set_title("RS-ESRGAN")
 
     axs[i, 4].imshow(hr_img)
     axs[i, 4].axis("off")
@@ -108,7 +148,7 @@ for i, (lr_img, hr_img) in enumerate(test_dataset):
 
     # 保存图片
     fig.savefig(
-        os.path.join("./image/test", "test_2.png"),
+        os.path.join("./image/test", "test_3.png"),
         dpi=500,
         bbox_inches="tight",
     )

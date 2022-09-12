@@ -28,8 +28,9 @@ class RS_ESRGAN(RealESRGAN):
         save_models_interval=50,
         save_history_interval=10,
         pretrain_model_path="",
-        use_sn=False,
         use_mixed_float=False,
+        use_sn=False,
+        use_ema=False,
     ):
         super().__init__(
             model_name,
@@ -52,8 +53,9 @@ class RS_ESRGAN(RealESRGAN):
             save_models_interval,
             save_history_interval,
             pretrain_model_path,
-            use_sn,
             use_mixed_float,
+            use_sn,
+            use_ema,
         )
 
     def build_generator(self):

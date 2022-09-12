@@ -8,8 +8,8 @@ from util.data_loader import DataLoader
 
 # 创建构建数据集对象
 dataloader = DataLoader(
-    train_resource_path="/home/zyk/图片/头像",
-    test_resource_path="/run/media/zyk/Data/数据集/DIV2K/test",
+    train_resource_path="F:/数据集/DIV2K/DIV2K_train_HR",
+    test_resource_path="F:/数据集/DIV2K/DIV2K_valid_HR",
     batch_size=4,
     downsample_mode="second-order",
     train_hr_img_height=128,
@@ -20,7 +20,7 @@ dataloader = DataLoader(
     max_workers=4,
 )
 
-for i, (lr_img, hr_img) in enumerate(dataloader.train_data.unbatch().take(1)):
+for i, (lr_img, hr_img) in enumerate(dataloader.test_data.unbatch().take(2)):
     print(lr_img.shape, hr_img.shape)
 
 # test_dataset = dataloader.test_data.unbatch().take(10)

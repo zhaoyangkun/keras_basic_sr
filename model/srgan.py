@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
+import time
 
 import keras.backend as K
 import numpy as np
@@ -97,7 +98,7 @@ class SRGAN:
         self.pretrain_model_path = pretrain_model_path  # 预训练模型路径
         self.use_mixed_float = use_mixed_float  # 是否使用混合精度
         self.use_sn = use_sn  # 是否使用谱归一化
-        self.use_ema = use_ema # 是否使用 EMA
+        self.use_ema = use_ema  # 是否使用 EMA
 
         # 创建日志记录器
         log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
@@ -589,6 +590,7 @@ class SRGAN:
         degration_config = config["second-order-degradation"]
         for epoch in range(self.init_epoch, self.epochs + 1):
             loss_batch_total = tf.constant(0, dtype=tf.float32)
+            batch_start_time = time.time()
             # 加载训练数据集，并训练
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
                 # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
@@ -611,19 +613,22 @@ class SRGAN:
 
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
+                    batch_end_time = time.time()
                     self.logger.info(
-                        "mode: pretrain, epochs: [%d/%d], batches: [%d/%d], loss: %.4f"
+                        "mode: pretrain, epochs: [%d/%d], batches: [%d/%d], loss: %.4f, time: %d"
                         % (
                             epoch,
                             self.epochs,
                             batch_idx + 1,
                             batch_idx_count,
                             loss,
+                            batch_end_time - batch_start_time,
                         )
                     )
+                    batch_start_time = time.time()
 
             # if self.use_ema:
-                
+
             # 统计 epoch 和 loss
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             loss_list = tf.concat(
@@ -684,7 +689,7 @@ class SRGAN:
                     save_models_dir_path, "dis_model_epoch_%d" % self.init_epoch
                 )
             )
-            
+
         config = parse_toml("./config/config.toml")
         degration_config = config["second-order-degradation"]
         epoch_list = tf.constant([])
@@ -704,6 +709,7 @@ class SRGAN:
             # 修改学习率
             self.scheduler([self.gen_optimizer, self.dis_optimizer], epoch)
 
+            batch_start_time = time.time()
             # 加载训练数据集，并训练
             for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
                 # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
@@ -727,8 +733,9 @@ class SRGAN:
 
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
+                    batch_end_time = time.time()
                     self.logger.info(
-                        "mode: train, epochs: [%d/%d], batches: [%d/%d], g_loss: %.4f, d_loss: %.4f, psnr: %.2f, ssim: %.2f"
+                        "mode: train, epochs: [%d/%d], batches: [%d/%d], g_loss: %.4f, d_loss: %.4f, psnr: %.2f, ssim: %.2f, time: %ds"
                         % (
                             epoch,
                             self.epochs,
@@ -738,8 +745,10 @@ class SRGAN:
                             d_loss,
                             psnr,
                             ssim,
+                            batch_end_time - batch_start_time,
                         )
                     )
+                    batch_start_time = time.time()
 
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             g_loss_list = tf.concat(

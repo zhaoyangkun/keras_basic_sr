@@ -48,6 +48,7 @@ class ESRGAN(SRGAN):
         pretrain_model_path="",
         use_mixed_float=False,
         use_sn=False,
+        use_ema=False,
     ):
         super().__init__(
             model_name,
@@ -73,6 +74,7 @@ class ESRGAN(SRGAN):
             pretrain_model_path,
             use_mixed_float,
             use_sn,
+            use_ema,
         )
 
         # 优化器

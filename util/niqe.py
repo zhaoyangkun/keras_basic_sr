@@ -1,19 +1,42 @@
-import math
-import os
-
 import cv2
+import math
 import numpy as np
-from basicsr.metrics.metric_util import reorder_image, to_y_channel
-from basicsr.utils.matlab_functions import imresize
-from basicsr.utils.registry import METRIC_REGISTRY
-from scipy.ndimage.filters import convolve
+import os
+from scipy.ndimage import convolve
 from scipy.special import gamma
+
+
+def reorder_image(img, input_order="HWC"):
+    """Reorder images to 'HWC' order.
+    If the input_order is (h, w), return (h, w, 1);
+    If the input_order is (c, h, w), return (h, w, c);
+    If the input_order is (h, w, c), return as it is.
+    Args:
+        img (ndarray): Input image.
+        input_order (str): Whether the input order is 'HWC' or 'CHW'.
+            If the input image shape is (h, w), input_order will not have
+            effects. Default: 'HWC'.
+    Returns:
+        ndarray: reordered image.
+    """
+
+    if input_order not in ["HWC", "CHW"]:
+        raise ValueError(
+            f"Wrong input_order {input_order}. Supported input_orders are 'HWC' and 'CHW'"
+        )
+    if len(img.shape) == 2:
+        img = img[..., None]
+    if input_order == "CHW":
+        img = img.transpose(1, 2, 0)
+    return
 
 
 def estimate_aggd_param(block):
     """Estimate AGGD (Asymmetric Generalized Gaussian Distribution) parameters.
+
     Args:
         block (ndarray): 2D Image block.
+
     Returns:
         tuple: alpha (float), beta_l (float) and beta_r (float) for the AGGD
             distribution (Estimating the parames in Equation 7 in the paper).
@@ -42,8 +65,10 @@ def estimate_aggd_param(block):
 
 def compute_feature(block):
     """Compute features.
+
     Args:
         block (ndarray): 2D Image block.
+
     Returns:
         list: Features with length of 18.
     """
@@ -74,14 +99,19 @@ def niqe(
     block_size_w=96,
 ):
     """Calculate NIQE (Natural Image Quality Evaluator) metric.
-    Ref: Making a "Completely Blind" Image Quality Analyzer.
+
+    ``Paper: Making a "Completely Blind" Image Quality Analyzer``
+
     This implementation could produce almost the same results as the official
     MATLAB codes: http://live.ece.utexas.edu/research/quality/niqe_release.zip
+
     Note that we do not include block overlap height and width, since they are
     always 0 in the official implementation.
+
     For good performance, it is advisable by the official implementation to
     divide the distorted image in to the same size patched as used for the
     construction of multivariate Gaussian model.
+
     Args:
         img (ndarray): Input image whose quality needs to be computed. The
             image must be a gray or Y (of YCbCr) image with shape (h, w).
@@ -157,13 +187,18 @@ def niqe(
 @METRIC_REGISTRY.register()
 def calculate_niqe(img, crop_border, input_order="HWC", convert_to="y", **kwargs):
     """Calculate NIQE (Natural Image Quality Evaluator) metric.
-    Ref: Making a "Completely Blind" Image Quality Analyzer.
+
+    ``Paper: Making a "Completely Blind" Image Quality Analyzer``
+
     This implementation could produce almost the same results as the official
     MATLAB codes: http://live.ece.utexas.edu/research/quality/niqe_release.zip
+
     > MATLAB R2021a result for tests/data/baboon.png: 5.72957338 (5.7296)
     > Our re-implementation result for tests/data/baboon.png: 5.7295763 (5.7296)
+
     We use the official params estimated from the pristine dataset.
     We use the recommended block size (96, 96) without overlaps.
+
     Args:
         img (ndarray): Input image whose quality needs to be computed.
             The input image must be in range [0, 255] with float/int type.
@@ -176,6 +211,7 @@ def calculate_niqe(img, crop_border, input_order="HWC", convert_to="y", **kwargs
             Default: 'HWC'.
         convert_to (str): Whether converted to 'y' (of MATLAB YCbCr) or 'gray'.
             Default: 'y'.
+
     Returns:
         float: NIQE result.
     """
