@@ -6,11 +6,11 @@
 
 - SRGAN（已实现）
 
-- ESRGAN（已经实现）
+- ESRGAN（已实现）
 
-- Real-ESRGAN（未实现）
+- Real-ESRGAN（已实现）
 
-- RS-ESRGAN（未实现）
+- RS-ESRGAN（已实现）
 
 <!-- ## 如何在本地运行
 
