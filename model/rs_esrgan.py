@@ -21,6 +21,7 @@ class RS_ESRGAN(RealESRGAN):
         train_hr_img_width=128,
         valid_hr_img_height=128,
         valid_hr_img_width=128,
+        rdb_num=16,
         max_workers=4,
         data_enhancement_factor=1,
         log_interval=20,
@@ -46,6 +47,7 @@ class RS_ESRGAN(RealESRGAN):
             train_hr_img_width,
             valid_hr_img_height,
             valid_hr_img_width,
+            rdb_num,
             max_workers,
             data_enhancement_factor,
             log_interval,
@@ -76,11 +78,11 @@ class RS_ESRGAN(RealESRGAN):
 
         # RRDB
         x = x_start
-        for _ in range(4):  # 默认为 16 块
+        for _ in range(8):  # 默认为 16 块
             x = RRDB(x)
 
         # RRFDB
-        for _ in range(2):  # 默认为 8 块
+        for _ in range(4):  # 默认为 8 块
             x = RRFDB(x)
 
         # RRFDB 之后

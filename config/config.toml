@@ -68,17 +68,17 @@ use_ema = true            # 是否使用 EMA
 # RS-ESRGAN
 [model.rs-esrgan]
 result_path = "./result"  # 结果保存路径
-epochs = 5000             # 训练总轮数
+epochs = 1000             # 训练总轮数
 init_epoch = 1            # 初始训练轮数
 batch_size = 4            # 单次训练样本数
-log_interval = 50         # 打印日志间隔
+log_interval = 20         # 打印日志间隔
 save_images_interval = 1  # 保存图片间隔
 save_models_interval = 1  # 保存模型间隔
 save_history_interval = 1 # 保存历史数据（损失，准确率）间隔
 pretrain_model_path = ""  # 预训练模型路径
 use_sn = true             # 是否使用谱归一化层
-use_mixed_float = true    # 是否使用混合精度
-use_ema = true            # 是否使用 EMA
+use_mixed_float = false   # 是否使用混合精度
+use_ema = false           # 是否使用 EMA
 
 
 # 二阶退化模型

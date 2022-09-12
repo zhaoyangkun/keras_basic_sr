@@ -20,7 +20,6 @@ from tensorflow.keras.optimizers import Adam
 from util.layer import RRDB, create_vgg_19_features_model, upsample
 
 from model.srgan import SRGAN
-from util.metric import calculate_psnr, calculate_ssim
 
 
 class ESRGAN(SRGAN):
@@ -124,7 +123,7 @@ class ESRGAN(SRGAN):
 
         # RRDB
         x = x_start
-        for _ in range(4):  # 默认为 16 个
+        for _ in range(8):  # 默认为 16 个
             x = RRDB(x)
 
         # RRDB 之后

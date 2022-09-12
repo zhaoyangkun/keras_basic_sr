@@ -1,9 +1,18 @@
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.applications import VGG19
-from tensorflow.keras.layers import (Add, Concatenate, Conv2D, Input, Lambda,
-                                     LeakyReLU, MaxPooling2D, PReLU, ReLU,
-                                     UpSampling2D)
+from tensorflow.keras.layers import (
+    Add,
+    Concatenate,
+    Conv2D,
+    Input,
+    Lambda,
+    LeakyReLU,
+    MaxPooling2D,
+    PReLU,
+    ReLU,
+    UpSampling2D,
+)
 from tensorflow_addons.layers import SpectralNormalization
 
 
@@ -11,7 +20,9 @@ from tensorflow_addons.layers import SpectralNormalization
 def spectral_norm_conv2d(input, use_sn=True, sn_dtype=None, **kwargs):
     if use_sn:
         if sn_dtype:
-            return SpectralNormalization(Conv2D(**kwargs, dtype=sn_dtype), dtype=sn_dtype)(input)
+            return SpectralNormalization(
+                Conv2D(**kwargs, dtype=sn_dtype), dtype=sn_dtype
+            )(input)
         return SpectralNormalization(Conv2D(**kwargs))(input)
     else:
         return Conv2D(**kwargs)(input)
@@ -30,7 +41,7 @@ def subpixel_conv2d(name, scale=2):
             input_shape[0],
             None if input_shape[1] is None else input_shape[1] * scale,
             None if input_shape[2] is None else input_shape[2] * scale,
-            int(input_shape[3] / (scale ** 2)),
+            int(input_shape[3] / (scale**2)),
         ]
         output_shape = tuple(dims)
         return output_shape
@@ -393,6 +404,7 @@ def create_vgg_19_features_model(loss_type="srgan"):
         outputs = vgg_model.get_layer("block5_conv4_relu").output
     elif loss_type == "esrgan":
         outputs = vgg_model.get_layer("block5_conv4").output
+        # outputs = vgg_model.get_layer("block5_conv4_relu").output
     elif loss_type == "real-esrgan":
         layers = [
             "block1_conv2",
@@ -430,7 +442,9 @@ class EMA:
         for param in self.model.variables:
             if param.trainable:
                 assert param.name in self.shadow
-                new_average = (1.0 - self.decay) * param.value() + self.decay * self.shadow[param.name]
+                new_average = (
+                    1.0 - self.decay
+                ) * param.value() + self.decay * self.shadow[param.name]
                 self.shadow[param.name] = new_average
 
     # 将模型参数变成影子值，backup是真实值的备份
@@ -448,6 +462,7 @@ class EMA:
                 assert param.name in self.backup
                 param.assign(self.backup[param.name])
         self.backup = {}
+
 
 # # 谱归一化层
 # class SpectralNorm(tf.keras.constraints.Constraint):

@@ -4,6 +4,9 @@ import sys
 import tensorflow as tf
 from matplotlib import pyplot as plt
 
+sys.path.append("./")
+from util.data_loader import DataLoader
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # gpus = tf.config.list_physical_devices("GPU")
@@ -20,10 +23,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 #         # Virtual devices must be set before GPUs have been initialized
 #         print(e)
 
-
-sys.path.append("./")
-from util.data_loader import DataLoader
-from util.niqe import tf_niqe
 
 TAKE_NUM = 3
 
