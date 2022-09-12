@@ -218,20 +218,28 @@ def ycbcr2bgr(img):
     return out_img
 
 
-def to_y_channel(img):
+def to_y_channel(img, channel_type="RGB"):
     """Change to Y channel of YCbCr.
 
     Args:
         img (ndarray): Images with range [0, 255].
-
+        channel_type (str): Type of channel
     Returns:
         (ndarray): Images with range [0, 255] (float type) without round.
     """
     img = img.astype(np.float32) / 255.0
     if img.ndim == 3 and img.shape[2] == 3:
-        img = bgr2ycbcr(img, y_only=True)
+        if channel_type == "RGB":
+            img = rgb2ycbcr(img, y_only=True)
+        elif channel_type == "BGR":
+            img = bgr2ycbcr(img, y_only=True)
+        else:
+            raise ValueError(
+                f'Wrong channel type {channel_type}. Supported channel type are "RGB" or "BGR"'
+            )
         img = img[..., None]
     return img * 255.0
+
 
 def reorder_image(img, input_order="HWC"):
     """Reorder images to 'HWC' order.

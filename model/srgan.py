@@ -32,6 +32,7 @@ from tensorflow.keras.optimizers import Adam
 from util.data_loader import DataLoader, PoolData
 from util.layer import EMA, create_vgg_19_features_model
 from util.logger import create_logger
+from util.metric import calculate_psnr, calculate_ssim
 from util.toml import parse_toml
 
 
@@ -370,13 +371,19 @@ class SRGAN:
                 # generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
                 # discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
 
-            # 将归一化区间从 [-1, 1] 转换到 [0, 1]
-            hr_img = (hr_img + 1) / 2
-            gen_img = (gen_img + 1) / 2
+            # 将归一化区间从 [-1, 1] 转换到 [0, 255]
+            hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
+            gen_img = tf.cast((gen_img + 1) * 127.5, dtype=tf.uint8)
 
             # 计算 psnr，ssim
-            psnr = tf.reduce_mean(tf.image.psnr(hr_img, gen_img, max_val=1.0))
-            ssim = tf.reduce_mean(tf.image.ssim(hr_img, gen_img, max_val=1.0))
+            psnr = calculate_psnr(
+                hr_img, gen_img, crop_border=0, input_order="HWC", test_y_channel=True
+            )
+            ssim = calculate_ssim(
+                hr_img, gen_img, crop_border=0, input_order="HWC", test_y_channel=True
+            )
+            # psnr = tf.reduce_mean(tf.image.psnr(hr_img, gen_img, max_val=1.0))
+            # ssim = tf.reduce_mean(tf.image.ssim(hr_img, gen_img, max_val=1.0))
 
         # 若使用混合精度，将梯度除以损失标度
         if self.use_mixed_float:
