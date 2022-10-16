@@ -150,7 +150,7 @@ def generate_area_sr_img(generator_list, img_path, downsample_mode="bicubic"):
         for i, ax in enumerate(fig.axes):
             # ax.text(0.5, 0.5, "ax%d" % (i + 1), va="center", ha="center")
             ax.set_title(title_list[i], y=-0.3, fontsize=6)
-            ax.axis("off")
+          ``  ax.axis("off")
             for tl in ax.get_xticklabels() + ax.get_yticklabels():
                 tl.set_visible(False)
 
