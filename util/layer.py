@@ -76,8 +76,6 @@ def upsample_rfb(x, number, method="nearest", channels=64):
             interpolation="nearest",
             name="up_sample_nearest_" + str(number),
         )(x)
-        x = RFB(x, in_channels=channels, out_channels=channels)
-        x = LeakyReLU(0.2)(x)
     # 双线性插值上采样
     elif method == "bilinear":
         x = UpSampling2D(
@@ -85,8 +83,6 @@ def upsample_rfb(x, number, method="nearest", channels=64):
             interpolation="bilinear",
             name="up_sample_bilinear_" + str(number),
         )(x)
-        x = RFB(x, in_channels=channels, out_channels=channels)
-        x = LeakyReLU(0.2)(x)
     # 亚像素卷积上采样
     elif method == "subpixel":
         x = Conv2D(
@@ -97,10 +93,11 @@ def upsample_rfb(x, number, method="nearest", channels=64):
             name="up_sample_conv2d_" + str(number),
         )(x)
         x = subpixel_conv2d("up_sample_subpixel_" + str(number), 2)(x)
-        x = RFB(x, in_channels=channels, out_channels=channels)
-        x = LeakyReLU(0.2)(x)
     else:
         raise ValueError("Unsupported upsample method!")
+
+    x = RFB(x, in_channels=channels, out_channels=channels)
+    x = LeakyReLU(0.2)(x)
 
     return x
 

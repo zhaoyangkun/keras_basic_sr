@@ -89,7 +89,7 @@ class RS_ESRGAN(RealESRGAN):
         x = RFB(x, in_channels=64, out_channels=64)
         x = Add()([x, x_start])
 
-        # 交替使用最近领域插值和亚像素卷积上采样算法
+        # 交替使用双线性插值和亚像素卷积上采样算法
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:

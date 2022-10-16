@@ -1,7 +1,6 @@
 import numpy as np
 from tensorflow.keras.applications import VGG19
 from tensorflow.keras.models import Model
-import tensorflow as tf
 
 hr_height = 128
 # patch = hr_height // 2**4
