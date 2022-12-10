@@ -1,11 +1,14 @@
 import os
 import shutil
 import time
+from glob import glob
 
+import cv2 as cv
 import keras.backend as K
 import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from tensorflow.keras import mixed_precision
 from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import (
@@ -712,6 +715,7 @@ class SRGAN:
         d_loss_list = tf.constant([], dtype=tf.float32)
         psnr_list = tf.constant([], dtype=tf.float32)
         ssim_list = tf.constant([], dtype=tf.float32)
+        niqe_list = tf.constant([], dtype=tf.float32)
         for epoch in range(self.init_epoch, self.epochs + 1):
             g_loss_batch_total = tf.constant(0, dtype=tf.float32)
             d_loss_batch_total = tf.constant(0, dtype=tf.float32)
@@ -768,7 +772,16 @@ class SRGAN:
                     batch_start_time = time.time()
 
             # 评估模型
-            psnr, ssim, _ = self.evaluate(epoch)
+            evalute_config = self.get_evaluate_config()
+            for _, config_item in evalute_config.items():
+                # 仅对标记的数据集进行评估和统计
+                if config_item["is_count"]:
+                    psnr, ssim, niqe = self.evaluate(
+                        epoch,
+                        lr_img_dir=config_item["lr_img_dir"],
+                        hr_img_dir=config_item["hr_img_dir"],
+                        dataset_name=config_item["dataset_name"],
+                    )
 
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             g_loss_list = tf.concat(
@@ -779,6 +792,7 @@ class SRGAN:
             )
             psnr_list = tf.concat([psnr_list, [psnr]], axis=0)
             ssim_list = tf.concat([ssim_list, [ssim]], axis=0)
+            niqe_list = tf.concat([niqe_list, [niqe]], axis=0)
 
             # 保存历史数据
             if epoch % self.save_history_interval == 0:
@@ -790,14 +804,24 @@ class SRGAN:
                     d_loss_list,
                     psnr_list,
                     ssim_list,
+                    niqe_list,
                 )
 
             # 保存图片
             if epoch % self.save_images_interval == 0:
                 self.save_images(epoch, save_images_dir_path, 5)
 
-            # 保存模型
+            # 评估并保存模型
             if epoch % self.save_models_interval == 0:
+                for _, config_item in evalute_config.items():
+                    # 对非标记的数据集进行评估，避免评估时间过长
+                    if not config_item["is_count"]:
+                        self.evaluate(
+                            epoch,
+                            lr_img_dir=config_item["lr_img_dir"],
+                            hr_img_dir=config_item["hr_img_dir"],
+                            dataset_name=config_item["dataset_name"],
+                        )
                 self.save_models(epoch, save_models_dir_path)
 
     def residual_block(self, input, filters):
@@ -855,64 +879,119 @@ class SRGAN:
 
         return x
 
-    @tf.function
+    # @tf.function
     def valid_step(self, lr_img, hr_img):
         """
         单步验证
         """
-        hr_generated = self.generator(lr_img, training=False)
-        # if self.use_mixed_float:
-        #     # 将数值类型从 float16 转换为 float32
-        #     hr_generated = tf.cast(hr_generated, dtype=tf.float32)
+        hr_generated = self.generator.predict(lr_img)
 
-        # 将归一化区间从 [-1, 1] 转换到 [0, 255]
+        # 反归一化到 [0, 255]
         hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
         hr_generated = tf.cast((hr_generated + 1) * 127.5, dtype=tf.uint8)
 
-        # # 计算 psnr 和 ssim
-        # psnr = tf.reduce_mean(tf.image.psnr(hr_img, hr_generated, max_val=1.0))
-        # ssim = tf.reduce_mean(tf.image.ssim(hr_img, hr_generated, max_val=1.0))
+        # 计算 PSNR，SSIM 和 NIQE
+        psnr = cal_psnr_tf(hr_img, hr_generated)
+        ssim = cal_ssim_tf(hr_img, hr_generated)
+        niqe = cal_niqe_tf(hr_generated)
 
-        return hr_img, hr_generated
+        return psnr, ssim, niqe
 
-    def evaluate(self, epoch):
+    def evaluate(self, epoch, lr_img_dir="", hr_img_dir="", dataset_name="Custom"):
         """
-        评估模型
+        评估模型，默认在 DIV2K 测试集上进行评估，若要在其他测试集合上评估，需指定 lr_img_dir 和 hr_img_dir 路径
         """
         test_data_len = tf.constant(len(self.data_loader.test_data), dtype=tf.float32)
         psnr_total = tf.constant(0, dtype=tf.float32)
         ssim_total = tf.constant(0, dtype=tf.float32)
         niqe_total = tf.constant(0, dtype=tf.float32)
-        for (lr_imgs, hr_imgs) in self.data_loader.test_data:
-            hr_img_list, gen_img_list = self.valid_step(lr_imgs, hr_imgs)
+        if lr_img_dir == "" and hr_img_dir == "":
+            for (lr_imgs, hr_imgs) in self.data_loader.test_data:
+                # 单步验证
+                psnr, ssim, niqe = self.valid_step(lr_imgs, hr_imgs)
 
-            # 计算 PSNR，SSIM 和 NIQE
-            psnr = cal_psnr_tf(hr_img_list, gen_img_list)
-            ssim = cal_ssim_tf(hr_img_list, gen_img_list)
-            niqe = cal_niqe_tf(gen_img_list)
+                # 统计 PSNR 和 SSIM
+                psnr_total += psnr
+                ssim_total += ssim
+                niqe_total += niqe
 
-            # 统计 PSNR，SSIM 和 NIQE
-            psnr_total += psnr
-            ssim_total += ssim
-            niqe_total += niqe
+            # 输出 PSNR，SSIM 和 NIQE
+            self.logger.info(
+                "mode: evaluate, epochs: [%d/%d], dataset: %s, PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
+                % (
+                    epoch,
+                    self.epochs,
+                    dataset_name,
+                    psnr_total / test_data_len,
+                    ssim_total / test_data_len,
+                    niqe_total / test_data_len,
+                )
+            )
 
-        # 输出 PSNR，SSIM 和 NIQE
-        self.logger.info(
-            "evaluate %s on DIV2K test dataset, epochs: [%d/%d], PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
-            % (
-                self.model_name,
-                epoch,
-                self.epochs,
+            return (
                 psnr_total / test_data_len,
                 ssim_total / test_data_len,
                 niqe_total / test_data_len,
             )
-        )
-        return (
-            psnr_total / test_data_len,
-            ssim_total / test_data_len,
-            niqe_total / test_data_len,
-        )
+        if lr_img_dir != "" and hr_img_dir != "":
+            lr_img_path_list = sorted(glob(os.path.join(lr_img_dir, "*[.png]")))
+            hr_img_path_list = sorted(glob(os.path.join(hr_img_dir, "*[.png]")))
+            assert len(lr_img_path_list) == len(
+                hr_img_path_list
+            ), "The length of lr_img_path_list and hr_img_path_list must be same!"
+            test_data_len = tf.constant(len(lr_img_path_list), dtype=tf.float32)
+
+            for (lr_img_path, hr_img_path) in list(
+                zip(lr_img_path_list, hr_img_path_list)
+            ):
+                # 读取图片（opencv）
+                lr_img = cv.imread(lr_img_path)
+                hr_img = cv.imread(hr_img_path)
+
+                # 将图片从 BGR 格式转换为 RGB 格式
+                lr_img = cv.cvtColor(lr_img, cv.COLOR_BGR2RGB)
+                hr_img = cv.cvtColor(hr_img, cv.COLOR_BGR2RGB)
+
+                # np.unit8 --> tf.uint8
+                lr_img = tf.convert_to_tensor(lr_img, dtype=tf.uint8)
+                hr_img = tf.convert_to_tensor(hr_img, dtype=tf.uint8)
+
+                # 归一化到 [-1, 1]
+                lr_img = tf.cast(lr_img, tf.float32) / 127.5 - 1
+                hr_img = tf.cast(hr_img, tf.float32) / 127.5 - 1
+
+                # 升维
+                lr_img = tf.expand_dims(lr_img, axis=0)
+                hr_img = tf.expand_dims(hr_img, axis=0)
+
+                # 单步验证
+                psnr, ssim, niqe = self.valid_step(lr_img, hr_img)
+
+                # 统计 PSNR 和 SSIM
+                psnr_total += psnr
+                ssim_total += ssim
+                niqe_total += niqe
+
+            # 输出 PSNR，SSIM 和 NIQE
+            self.logger.info(
+                "mode: evaluate, epochs: [%d/%d], dataset: %s, PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
+                % (
+                    epoch,
+                    self.epochs,
+                    dataset_name,
+                    psnr_total / test_data_len,
+                    ssim_total / test_data_len,
+                    niqe_total / test_data_len,
+                )
+            )
+
+            return (
+                psnr_total / test_data_len,
+                ssim_total / test_data_len,
+                niqe_total / test_data_len,
+            )
+        else:
+            raise ValueError("The lr_img_dir or hr_img_dir can not be empty!")
 
     def save_pretrain_history(
         self, epoch, save_history_dir_path, epoch_list, loss_list
@@ -937,7 +1016,7 @@ class SRGAN:
             os.path.join(
                 save_history_dir_path, "pretrain_history_epoch_%d.png" % epoch
             ),
-            dpi=500,
+            dpi=300,
             bbox_inches="tight",
         )
         fig.clear()
@@ -952,6 +1031,7 @@ class SRGAN:
         d_loss_list,
         psnr_list,
         ssim_list,
+        niqe_list,
     ):
         """
         保存历史数据
@@ -959,7 +1039,7 @@ class SRGAN:
         fig = plt.figure(figsize=(10, 10))
 
         # 绘制损失曲线
-        ax_1 = plt.subplot(2, 1, 1)
+        ax_1 = plt.subplot(2, 2, 1)
         ax_1.set_title("Train Loss")
         (line_1,) = ax_1.plot(
             epoch_list, g_loss_list, color="deepskyblue", marker=".", label="g_loss"
@@ -969,32 +1049,37 @@ class SRGAN:
         )
         ax_1.set_xlabel("epoch")
         ax_1.set_ylabel("Loss")
+        ax_1.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax_1.legend(handles=[line_1, line_2], loc="upper right")
 
         # 绘制 PSNR 曲线
-        ax_2 = plt.subplot(2, 2, 3)
+        ax_2 = plt.subplot(2, 2, 2)
         ax_2.set_title("PSNR")
-        (line_3,) = ax_2.plot(
-            epoch_list, psnr_list, color="orange", marker=".", label="PSNR"
-        )
+        ax_2.plot(epoch_list, psnr_list, color="orange", marker=".", label="PSNR")
         ax_2.set_xlabel("epoch")
-        ax_2.set_ylabel("PSNR")
-        ax_2.legend(handles=[line_3], loc="upper left")
+        ax_2.set_ylabel("PSNR(dB)")
+        ax_2.xaxis.set_major_locator(MaxNLocator(integer=True))
 
-        # 绘制损失曲线
-        ax_3 = plt.subplot(2, 2, 4)
+        # 绘制 SSIM 曲线
+        ax_3 = plt.subplot(2, 2, 3)
         ax_3.set_title("SSIM")
-        (line_4,) = ax_3.plot(
-            epoch_list, ssim_list, color="skyblue", marker=".", label="SSIM"
-        )
+        ax_3.plot(epoch_list, ssim_list, color="salmon", marker=".", label="SSIM")
         ax_3.set_xlabel("epoch")
         ax_3.set_ylabel("SSIM")
-        ax_3.legend(handles=[line_4], loc="upper left")
+        ax_3.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+        # 绘制 NIQE 曲线
+        ax_4 = plt.subplot(2, 2, 4)
+        ax_4.set_title("NIQE")
+        ax_4.plot(epoch_list, niqe_list, color="purple", marker=".", label="NIQE")
+        ax_4.set_xlabel("epoch")
+        ax_4.set_ylabel("NIQE")
+        ax_4.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         fig.tight_layout()
         fig.savefig(
             os.path.join(save_history_dir_path, "train_history_epoch_%d.png" % epoch),
-            dpi=500,
+            dpi=300,
             bbox_inches="tight",
         )
         fig.clear()
@@ -1040,7 +1125,7 @@ class SRGAN:
         # 保存图片
         fig.savefig(
             os.path.join(save_images_dir_path, "test_epoch_%d.png" % epoch),
-            dpi=500,
+            dpi=300,
             bbox_inches="tight",
         )
         fig.clear()
@@ -1109,15 +1194,10 @@ class SRGAN:
 
         return self.mse_loss(hr_features, hr_generated_features)
 
-    # def validate_from_saved_weights(self, weights_path, lr_img):
-    #     """
-    #     从权重文件中加载模型，并进行验证
-    #     """
-    #     # 加载模型
-    #     self.generator.load_weights(weights_path)
-    #     sr_img = self.generator.predict(tf.expand_dims(lr_img, 0))
-    #     sr_img = tf.squeeze(sr_img, axis=0)
-    #     sr_img = tf.cast((sr_img + 1) * 127.5, dtype=tf.uint8).numpy()
-    #     # sr_img = tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8).numpy()
-
-    #     plt.imsave("./image/test_sr.png", sr_img)
+    def get_evaluate_config(self):
+        """
+        获取评估测试集相关配置信息
+        """
+        config = parse_toml("./config/config.toml")
+        evaluate_config = config["evaluate_dataset"]
+        return evaluate_config

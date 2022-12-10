@@ -99,6 +99,7 @@ class SRCNN:
 
         # 损失函数
         self.mse_loss = MeanSquaredError()
+        # self.mae_loss = MeanAbsoluteError()
 
         # 创建数据集
         self.data_loader = DataLoader(
@@ -150,6 +151,7 @@ class SRCNN:
         with tf.GradientTape() as tape:
             gen_img = self.generator(lr_img, training=True)
             loss = self.mse_loss(hr_img, gen_img)
+            # loss = self.mae_loss(hr_img, gen_img)
 
             # 若使用混合精度
             if self.use_mixed_float:
@@ -222,6 +224,7 @@ class SRCNN:
         loss_list = tf.constant([], dtype=tf.float32)
         psnr_list = tf.constant([], dtype=tf.float32)
         ssim_list = tf.constant([], dtype=tf.float32)
+        niqe_list = tf.constant([], dtype=tf.float32)
         for epoch in range(self.init_epoch, self.epochs + 1):
             loss_batch_total = tf.constant(0, dtype=tf.float32)
             batch_idx_count = tf.constant(
@@ -274,23 +277,25 @@ class SRCNN:
                         )
                     )
                     batch_start_time = time.time()
+
             # 评估模型
             evalute_config = self.get_evaluate_config()
             for _, config_item in evalute_config.items():
+                # 仅对标记的数据集进行评估和统计
                 if config_item["is_count"]:
-                    psnr, ssim, _ = self.evaluate(
+                    psnr, ssim, niqe = self.evaluate(
                         epoch,
                         lr_img_dir=config_item["lr_img_dir"],
                         hr_img_dir=config_item["hr_img_dir"],
                         dataset_name=config_item["dataset_name"],
                     )
-                else:
-                    self.evaluate(
-                        epoch,
-                        lr_img_dir=config_item["lr_img_dir"],
-                        hr_img_dir=config_item["hr_img_dir"],
-                        dataset_name=config_item["dataset_name"],
-                    )
+                # else:
+                #     self.evaluate(
+                #         epoch,
+                #         lr_img_dir=config_item["lr_img_dir"],
+                #         hr_img_dir=config_item["hr_img_dir"],
+                #         dataset_name=config_item["dataset_name"],
+                #     )
 
             # 统计每个 epoch 对应的 loss、psnr、ssim
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
@@ -299,6 +304,7 @@ class SRCNN:
             )
             psnr_list = tf.concat([psnr_list, [psnr]], axis=0)
             ssim_list = tf.concat([ssim_list, [ssim]], axis=0)
+            niqe_list = tf.concat([niqe_list, [niqe]], axis=0)
 
             # 保存历史数据
             if epoch % self.save_history_interval == 0:
@@ -309,14 +315,24 @@ class SRCNN:
                     loss_list,
                     psnr_list,
                     ssim_list,
+                    niqe_list,
                 )
 
             # 保存图片
             if epoch % self.save_images_interval == 0:
                 self.save_images(epoch, save_images_dir_path, 5)
 
-            # 保存模型
+            # 评估并保存模型
             if epoch % self.save_models_interval == 0:
+                for _, config_item in evalute_config.items():
+                    # 对非标记的数据集进行评估，避免评估时间过长
+                    if not config_item["is_count"]:
+                        self.evaluate(
+                            epoch,
+                            lr_img_dir=config_item["lr_img_dir"],
+                            hr_img_dir=config_item["hr_img_dir"],
+                            dataset_name=config_item["dataset_name"],
+                        )
                 self.save_models(epoch, save_models_dir_path)
 
     # @tf.function
@@ -366,12 +382,11 @@ class SRCNN:
 
             # 输出 PSNR，SSIM 和 NIQE
             self.logger.info(
-                "evaluate %s on %s test dataset, epochs: [%d/%d], PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
+                "mode: evaluate, epochs: [%d/%d], dataset: %s, PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
                 % (
-                    self.model_name,
-                    dataset_name,
                     epoch,
                     self.epochs,
+                    dataset_name,
                     psnr_total / test_data_len,
                     ssim_total / test_data_len,
                     niqe_total / test_data_len,
@@ -391,7 +406,7 @@ class SRCNN:
             ), "The length of lr_img_path_list and hr_img_path_list must be same!"
             test_data_len = tf.constant(len(lr_img_path_list), dtype=tf.float32)
 
-            for (lr_img_path, hr_img_path) in range(
+            for (lr_img_path, hr_img_path) in list(
                 zip(lr_img_path_list, hr_img_path_list)
             ):
                 # 读取图片（opencv）
@@ -409,8 +424,8 @@ class SRCNN:
                 # 上采样
                 lr_img = resize(
                     lr_img,
-                    self.train_hr_img_width,
-                    self.train_hr_img_height,
+                    hr_img.shape[1],
+                    hr_img.shape[0],
                     3,
                     "bicubic",
                 )
@@ -433,12 +448,11 @@ class SRCNN:
 
             # 输出 PSNR，SSIM 和 NIQE
             self.logger.info(
-                "evaluate %s on %s test dataset, epochs: [%d/%d], PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
+                "mode: evaluate, epochs: [%d/%d], dataset: %s, PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
                 % (
-                    self.model_name,
-                    dataset_name,
                     epoch,
                     self.epochs,
+                    dataset_name,
                     psnr_total / test_data_len,
                     ssim_total / test_data_len,
                     niqe_total / test_data_len,
@@ -461,6 +475,7 @@ class SRCNN:
         loss_list,
         psnr_list,
         ssim_list,
+        niqe_list,
     ):
         """
         保存历史数据
@@ -468,7 +483,7 @@ class SRCNN:
         fig = plt.figure(figsize=(10, 10))
 
         # 绘制 Loss 曲线
-        ax_1 = plt.subplot(2, 1, 1)
+        ax_1 = plt.subplot(2, 2, 1)
         ax_1.set_title("Train Loss")
         (_,) = ax_1.plot(
             epoch_list, loss_list, color="deepskyblue", marker=".", label="loss"
@@ -478,44 +493,38 @@ class SRCNN:
         # )
         ax_1.set_xlabel("epoch")
         ax_1.set_ylabel("Loss")
-        # ax_1.set_xlim(0, epoch + 1)
         ax_1.xaxis.set_major_locator(MaxNLocator(integer=True))
+        # ax_1.set_xlim(0, epoch + 1)
         # ax_1.legend(handles=[line_1], loc="upper right")
 
         # 绘制 PSNR 曲线
-        ax_2 = plt.subplot(2, 2, 3)
+        ax_2 = plt.subplot(2, 2, 2)
         ax_2.set_title("PSNR")
-        (_,) = ax_2.plot(
-            epoch_list, psnr_list, color="orange", marker=".", label="PSNR"
-        )
-        # (line_3,) = ax_2.plot(
-        #     epoch_list, psnr_list, color="orange", marker=".", label="PSNR"
-        # )
-        # ax_2.set_xlim(0, epoch + 1)
+        ax_2.plot(epoch_list, psnr_list, color="orange", marker=".", label="PSNR")
         ax_2.set_xlabel("epoch")
-        ax_2.set_ylabel("PSNR")
+        ax_2.set_ylabel("PSNR(dB)")
         ax_2.xaxis.set_major_locator(MaxNLocator(integer=True))
-        # ax_2.legend(handles=[line_3], loc="upper right")
 
         # 绘制 SSIM 曲线
-        ax_3 = plt.subplot(2, 2, 4)
+        ax_3 = plt.subplot(2, 2, 3)
         ax_3.set_title("SSIM")
-        (_,) = ax_3.plot(
-            epoch_list, ssim_list, color="salmon", marker=".", label="SSIM"
-        )
-        # (line_4,) = ax_3.plot(
-        #     epoch_list, ssim_list, color="salmon", marker=".", label="SSIM"
-        # )
-        # ax_3.set_xlim(0, epoch + 1)
+        ax_3.plot(epoch_list, ssim_list, color="salmon", marker=".", label="SSIM")
         ax_3.set_xlabel("epoch")
         ax_3.set_ylabel("SSIM")
         ax_3.xaxis.set_major_locator(MaxNLocator(integer=True))
-        # ax_3.legend(handles=[line_4], loc="upper right")
+
+        # 绘制 NIQE 曲线
+        ax_4 = plt.subplot(2, 2, 4)
+        ax_4.set_title("NIQE")
+        ax_4.plot(epoch_list, niqe_list, color="purple", marker=".", label="NIQE")
+        ax_4.set_xlabel("epoch")
+        ax_4.set_ylabel("NIQE")
+        ax_4.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         fig.tight_layout()
         fig.savefig(
             os.path.join(save_history_dir_path, "train_history_epoch_%d.png" % epoch),
-            dpi=500,
+            dpi=300,
             bbox_inches="tight",
         )
         fig.clear()
@@ -572,7 +581,7 @@ class SRCNN:
         # 保存图片
         fig.savefig(
             os.path.join(save_images_dir_path, "test_epoch_%d.png" % epoch),
-            dpi=500,
+            dpi=300,
             bbox_inches="tight",
         )
         fig.clear()

@@ -14,6 +14,7 @@ decorator==5.1.1
 entrypoints==0.4
 et-xmlfile==1.1.0
 executing==0.8.3
+flake8==6.0.0
 flatbuffers==2.0
 fonttools==4.33.3
 gast==0.4.0
@@ -36,9 +37,14 @@ libclang==14.0.1
 Markdown==3.3.7
 matplotlib==3.5.2
 matplotlib-inline==0.1.3
+mccabe==0.7.0
 mypy-extensions==0.4.3
 nest-asyncio==1.5.5
 numpy==1.22.3
+nvidia-cublas-cu11==11.10.3.66
+nvidia-cuda-nvrtc-cu11==11.7.99
+nvidia-cuda-runtime-cu11==11.7.99
+nvidia-cudnn-cu11==8.5.0.96
 oauthlib==3.2.0
 opencv-python==4.5.5.64
 openpyxl==3.0.10
@@ -58,6 +64,8 @@ ptyprocess==0.7.0
 pure-eval==0.2.2
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
+pycodestyle==2.10.0
+pyflakes==3.0.0
 Pygments==2.12.0
 pyparsing==3.0.9
 python-dateutil==2.8.2
@@ -66,6 +74,7 @@ pyzmq==19.0.2
 requests==2.27.1
 requests-oauthlib==1.3.1
 rsa==4.8
+scipy==1.9.3
 six==1.16.0
 stack-data==0.2.0
 tensorboard==2.9.0
@@ -78,6 +87,7 @@ tensorflow-io-gcs-filesystem==0.25.0
 termcolor==1.1.0
 toml==0.10.2
 tomli==2.0.1
+torch==1.13.0
 tornado==6.1
 tqdm==4.64.0
 traitlets==5.2.0
@@ -87,4 +97,5 @@ urllib3==1.26.9
 wcwidth==0.2.5
 Werkzeug==2.1.2
 wrapt==1.14.1
+yapf==0.32.0
 zipp==3.8.0

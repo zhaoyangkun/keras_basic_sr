@@ -1,6 +1,11 @@
-import tensorflow as tf
+import matplotlib.pyplot as plt
+import numpy as np
 
-a = tf.constant(0, dtype=tf.float32)
-print(a)
-a = 2.0
-print(a)
+x = np.linspace(0, np.pi, 1000)
+y = np.sin(x)
+
+plt.subplot(221).plot(x, y)
+plt.subplot(223).plot(x, y)
+plt.subplot(122).plot(x, -y)
+
+plt.show()
