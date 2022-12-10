@@ -28,10 +28,11 @@ from tensorflow.keras.losses import (
 )
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+
 from util.data_loader import DataLoader, PoolData
 from util.layer import create_vgg_19_features_model
 from util.logger import create_logger
-from util.metric import cal_psnr_tf, cal_ssim_tf
+from util.metric import cal_niqe_tf, cal_psnr_tf, cal_ssim_tf
 from util.toml import parse_toml
 
 
@@ -370,9 +371,9 @@ class SRGAN:
                 # generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
                 # discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
 
-            # 将归一化区间从 [-1, 1] 转换到 [0, 255]
-            hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
-            gen_img = tf.cast((gen_img + 1) * 127.5, dtype=tf.uint8)
+            # # 将归一化区间从 [-1, 1] 转换到 [0, 255]
+            # hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
+            # gen_img = tf.cast((gen_img + 1) * 127.5, dtype=tf.uint8)
 
             # # 计算 psnr，ssim
             # psnr = calculate_psnr(
@@ -422,7 +423,7 @@ class SRGAN:
             zip(gradients_discriminator, self.discriminator.trainable_variables)
         )
 
-        return generator_total_loss, discriminator_loss, hr_img, gen_img
+        return generator_total_loss, discriminator_loss
 
     # def train_old(self):
     #     """
@@ -714,8 +715,8 @@ class SRGAN:
         for epoch in range(self.init_epoch, self.epochs + 1):
             g_loss_batch_total = tf.constant(0, dtype=tf.float32)
             d_loss_batch_total = tf.constant(0, dtype=tf.float32)
-            psnr_batch_total = tf.constant(0, dtype=tf.float32)
-            ssim_batch_total = tf.constant(0, dtype=tf.float32)
+            # psnr_batch_total = tf.constant(0, dtype=tf.float32)
+            # ssim_batch_total = tf.constant(0, dtype=tf.float32)
             batch_idx_count = tf.constant(
                 len(self.data_loader.train_data), dtype=tf.float32
             )
@@ -738,24 +739,22 @@ class SRGAN:
                     )
                     lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
 
-                g_loss, d_loss, hr_img_list, gen_img_list = self.train_step(
-                    lr_imgs, hr_imgs
-                )
+                g_loss, d_loss = self.train_step(lr_imgs, hr_imgs)
 
-                # 计算 PSNR 和 SSIM
-                psnr = cal_psnr_tf(hr_img_list, gen_img_list)
-                ssim = cal_ssim_tf(hr_img_list, gen_img_list)
+                # # 计算 PSNR 和 SSIM
+                # psnr = cal_psnr_tf(hr_img_list, gen_img_list)
+                # ssim = cal_ssim_tf(hr_img_list, gen_img_list)
 
                 g_loss_batch_total += g_loss
                 d_loss_batch_total += d_loss
-                psnr_batch_total += psnr
-                ssim_batch_total += ssim
+                # psnr_batch_total += psnr
+                # ssim_batch_total += ssim
 
                 # 输出日志
                 if (batch_idx + 1) % self.log_interval == 0:
                     batch_end_time = time.time()
                     self.logger.info(
-                        "mode: train, epochs: [%d/%d], batches: [%d/%d], g_loss: %.4f, d_loss: %.4f, psnr: %.2f, ssim: %.2f, time: %ds"
+                        "mode: train, epochs: [%d/%d], batches: [%d/%d], g_loss: %.4f, d_loss: %.4f, time: %ds"
                         % (
                             epoch,
                             self.epochs,
@@ -763,12 +762,13 @@ class SRGAN:
                             batch_idx_count,
                             g_loss,
                             d_loss,
-                            psnr,
-                            ssim,
                             batch_end_time - batch_start_time,
                         )
                     )
                     batch_start_time = time.time()
+
+            # 评估模型
+            psnr, ssim, _ = self.evaluate(epoch)
 
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             g_loss_list = tf.concat(
@@ -777,12 +777,8 @@ class SRGAN:
             d_loss_list = tf.concat(
                 [d_loss_list, [d_loss_batch_total / batch_idx_count]], axis=0
             )
-            psnr_list = tf.concat(
-                [psnr_list, [psnr_batch_total / batch_idx_count]], axis=0
-            )
-            ssim_list = tf.concat(
-                [ssim_list, [ssim_batch_total / batch_idx_count]], axis=0
-            )
+            psnr_list = tf.concat([psnr_list, [psnr]], axis=0)
+            ssim_list = tf.concat([ssim_list, [ssim]], axis=0)
 
             # 保存历史数据
             if epoch % self.save_history_interval == 0:
@@ -800,9 +796,8 @@ class SRGAN:
             if epoch % self.save_images_interval == 0:
                 self.save_images(epoch, save_images_dir_path, 5)
 
-            # 评估并保存模型
+            # 保存模型
             if epoch % self.save_models_interval == 0:
-                self.evaluate(epoch)
                 self.save_models(epoch, save_models_dir_path)
 
     def residual_block(self, input, filters):
@@ -887,24 +882,36 @@ class SRGAN:
         test_data_len = tf.constant(len(self.data_loader.test_data), dtype=tf.float32)
         psnr_total = tf.constant(0, dtype=tf.float32)
         ssim_total = tf.constant(0, dtype=tf.float32)
+        niqe_total = tf.constant(0, dtype=tf.float32)
         for (lr_imgs, hr_imgs) in self.data_loader.test_data:
             hr_img_list, gen_img_list = self.valid_step(lr_imgs, hr_imgs)
-            # 计算 PSNR 和 SSIM
+
+            # 计算 PSNR，SSIM 和 NIQE
             psnr = cal_psnr_tf(hr_img_list, gen_img_list)
             ssim = cal_ssim_tf(hr_img_list, gen_img_list)
-            # 统计 PSNR 和 SSIM
+            niqe = cal_niqe_tf(gen_img_list)
+
+            # 统计 PSNR，SSIM 和 NIQE
             psnr_total += psnr
             ssim_total += ssim
-        # 输出 SSIM 和 PSNR
+            niqe_total += niqe
+
+        # 输出 PSNR，SSIM 和 NIQE
         self.logger.info(
-            "evaluate %s, epochs: [%d/%d], PSNR: %.2f, SSIM: %.2f"
+            "evaluate %s on DIV2K test dataset, epochs: [%d/%d], PSNR: %.2f, SSIM: %.4f, NIQE: %.2f"
             % (
                 self.model_name,
                 epoch,
                 self.epochs,
                 psnr_total / test_data_len,
                 ssim_total / test_data_len,
+                niqe_total / test_data_len,
             )
+        )
+        return (
+            psnr_total / test_data_len,
+            ssim_total / test_data_len,
+            niqe_total / test_data_len,
         )
 
     def save_pretrain_history(

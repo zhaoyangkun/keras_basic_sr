@@ -372,9 +372,9 @@ class ESRGAN(SRGAN):
                 # generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
                 # discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
 
-            # 将归一化区间从 [-1, 1] 转换到 [0, 255]
-            hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
-            hr_generated = tf.cast((hr_generated + 1) * 127.5, dtype=tf.uint8)
+            # # 将归一化区间从 [-1, 1] 转换到 [0, 255]
+            # hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
+            # hr_generated = tf.cast((hr_generated + 1) * 127.5, dtype=tf.uint8)
 
             # 计算 psnr，ssim
             # psnr = calculate_psnr(
@@ -424,4 +424,4 @@ class ESRGAN(SRGAN):
             zip(gradients_discriminator, self.discriminator.trainable_variables)
         )
 
-        return generator_total_loss, discriminator_loss, hr_img, hr_generated
+        return generator_total_loss, discriminator_loss

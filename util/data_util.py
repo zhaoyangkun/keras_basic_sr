@@ -558,3 +558,70 @@ def generate_sinc_kernel(sinc_prob):
         sinc_kernel = pulse
 
     return sinc_kernel
+
+
+def resize(ori_img, resize_width, resize_height, channels=3, mode="bicubic"):
+    """图像缩放
+
+    Args:
+        ori_img (tf.uint8 or tf.float32): 原图；三维(H, W, C)或四维(B, H, W, C)图像张量；若类型为 tf.float32，值区间为 [-1, 1] ；若类型为 tf.uint8，值区间为 [0, 255]
+        resize_width (int): 缩放后的宽度
+        resize_height (int): 缩放后的高度
+        channels (int): 通道数，默认值为 3
+        mode (str): 插值算法，默认值为 "bicubic"，可选值为 "area", "bilinear", "bicubic"
+
+    Returns:
+        tf.uint8 or tf.float32: 缩放后的图像，若类型为 tf.float32，值区间为 [-1, 1] ；若类型为 tf.uint8，值区间为 [0, 255]
+    """
+    mode_dict = {
+        "area": cv2.INTER_AREA,
+        "bilinear": cv2.INTER_LINEAR,
+        "bicubic": cv2.INTER_CUBIC,
+    }
+    dtype = ori_img.dtype
+
+    # 校验数值类型
+    assert (
+        dtype == tf.uint8 or dtype == tf.float32
+    ), "The dtype of ori_img must be tf.uint8 or tf.float32!"
+
+    # 校验插值算法
+    if mode in mode_dict:
+        # 若数据类型为 tf.float32，需进行反归一化
+        if dtype == tf.float32:
+            ori_img = tf.cast((ori_img + 1) * 127.5, dtype=tf.uint8)
+        # tensor 转 numpy
+        ori_img_np = ori_img.numpy()
+
+        # 三维张量(H, W, C)，直接缩放
+        if ori_img_np.ndim == 3:
+            proc_img = cv2.resize(
+                ori_img_np,
+                (resize_width, resize_height),
+                interpolation=mode_dict[mode],
+            )
+        # 四维张量(B, H, W, C)，对每张图像分别缩放
+        elif ori_img_np.ndim == 4:
+            proc_img = np.zeros(
+                [0, resize_height, resize_width, channels], dtype=np.uint8
+            )
+            for i in range(ori_img_np.shape[0]):
+                proc_img_temp = cv2.resize(
+                    ori_img_np[i],
+                    (resize_width, resize_height),
+                    interpolation=mode_dict[mode],
+                )
+                proc_img = np.concatenate(
+                    [proc_img, np.expand_dims(proc_img_temp, axis=0)], axis=0
+                )
+        else:
+            raise TypeError("The shape of ori_img must be (H, W, C) or (B, H, W, C)")
+    else:
+        raise ValueError("Unsupported resize mode!")
+    # 将 np.uint8 转换为 tf.uint8
+    proc_img = tf.convert_to_tensor(proc_img, dtype=tf.uint8)
+    # 若数据类型为 tf.float32，需进行归一化
+    if dtype == tf.float32:
+        proc_img = tf.cast(proc_img, tf.float32) / 127.5 - 1
+
+    return proc_img

@@ -197,46 +197,47 @@ def generate_area_sr_img(generator_list, img_path, downsample_mode="bicubic"):
 
 
 if __name__ == "__main__":
-    # # 模型路径
-    # model_path = "/home/zyk/下载/gen_model_epoch_140"
-    # # model_path = (
-    # #     "/run/media/zyk/Data/研究生资料/超分模型结果/esrgan/models/train/gen_model_epoch_6500"
-    # # )
-    # # model_path = (
-    # #     "/run/media/zyk/Data/研究生资料/超分模型结果/srgan/models/train/gen_model_epoch_1000"
-    # # )
-    # model_path = "/run/media/zyk/Data/研究生资料/超分模型结果/rs-esrgan/gen_model_epoch_200"
-    # # 加载模型
-    # generator = load_model(model_path)
-    # # 获取图片路径
-    # lr_img_resource_path_list = sorted(
-    #     glob(
-    #         os.path.join(
-    #             "./image/RealSRSet",
-    #             "*[.png]",
-    #         )
-    #     )
+    # 模型路径
+    model_path = "/home/zyk/下载/gen_model_epoch_140"
+    # model_path = (
+    #     "/run/media/zyk/Data/研究生资料/超分模型结果/esrgan/models/train/gen_model_epoch_6500"
     # )
-    # # 生成图片
-    # for lr_img_path in lr_img_resource_path_list:
-    #     sr_img_save_path = lr_img_path.replace("RealSRSet", "RealSR-rs-esrgan")
-    #     generate_sr_img(generator, lr_img_path, sr_img_save_path)
+    # model_path = (
+    #     "/run/media/zyk/Data/研究生资料/超分模型结果/srgan/models/train/gen_model_epoch_1000"
+    # )
+    # model_path = "/run/media/zyk/Data/研究生资料/超分模型结果/rs-esrgan/gen_model_epoch_200"
+    model_path = "/run/media/zyk-arch/Data/研究生资料/超分模型结果/rs-esrgan-bicubic/models/train/gen_model_epoch_1000"
+    # 加载模型
+    generator = load_model(model_path)
+    # 获取图片路径
+    lr_img_resource_path_list = sorted(
+        glob(
+            os.path.join(
+                "./image/set14/LRbicx4",
+                "*[.png]",
+            )
+        )
+    )
+    # 生成图片
+    for lr_img_path in lr_img_resource_path_list:
+        sr_img_save_path = lr_img_path.replace("LRbicx4", "rs-esrgan-bicubic")
+        generate_sr_img(generator, lr_img_path, sr_img_save_path)
 
-    # 加载模型，选择 ROI 区域进行超分，生成超分效果对比图
-    srgan = load_model(
-        "/run/media/zyk/Data/研究生资料/超分模型结果/srgan/models/train/gen_model_epoch_1000"
-    )
-    esrgan = load_model(
-        "/run/media/zyk/Data/研究生资料/超分模型结果/esrgan/models/train/gen_model_epoch_6500"
-    )
-    real_esrgan = load_model(
-        "/run/media/zyk/Data/研究生资料/超分模型结果/real-esrgan/gen_model_epoch_140"
-    )
-    rs_esrgan = load_model(
-        "/run/media/zyk/Data/研究生资料/超分模型结果/rs-esrgan/gen_model_epoch_200"
-    )
-    generate_area_sr_img(
-        [srgan, esrgan, real_esrgan, rs_esrgan],
-        "./image/set5/original/baby.png",
-        downsample_mode="noise",
-    )
+    # # 加载模型，选择 ROI 区域进行超分，生成超分效果对比图
+    # srgan = load_model(
+    #     "/run/media/zyk/Data/研究生资料/超分模型结果/srgan/models/train/gen_model_epoch_1000"
+    # )
+    # esrgan = load_model(
+    #     "/run/media/zyk/Data/研究生资料/超分模型结果/esrgan/models/train/gen_model_epoch_6500"
+    # )
+    # real_esrgan = load_model(
+    #     "/run/media/zyk/Data/研究生资料/超分模型结果/real-esrgan/gen_model_epoch_140"
+    # )
+    # rs_esrgan = load_model(
+    #     "/run/media/zyk/Data/研究生资料/超分模型结果/rs-esrgan/gen_model_epoch_200"
+    # )
+    # generate_area_sr_img(
+    #     [srgan, esrgan, real_esrgan, rs_esrgan],
+    #     "./image/set5/original/baby.png",
+    #     downsample_mode="noise",
+    # )

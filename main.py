@@ -4,14 +4,33 @@ import os
 from model.esrgan import ESRGAN
 from model.real_esrgan import RealESRGAN
 from model.rs_esrgan import RS_ESRGAN
+from model.srcnn import SRCNN
 from model.srgan import SRGAN
+from model.vdsr import VDSR
 from util.toml import parse_toml
 
 # 日志级别
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 
-# 是否使用 GPU
+# 不使用 GPU
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+
+# def setup_gpu():
+#     """
+#     设置 GPU
+#     """
+#     gpus = tf.config.list_physical_devices("GPU")
+#     if gpus:
+#         try:
+#             tf.config.experimental.set_memory_growth(gpus[0], True)
+#             # tf.config.set_logical_device_configuration(
+#             #     gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=1024)]
+#             # )
+#             # logical_gpus = tf.config.list_logical_devices("GPU")
+#             # print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+#         except RuntimeError as e:
+#             print(e)
 
 
 def build_sr_model(config):
@@ -20,11 +39,19 @@ def build_sr_model(config):
     """
     # 获取模型名称
     model_name = config["model"]["model_name"].lower()
+    model_list = [
+        "srcnn",
+        "vdsr",
+        "srgan",
+        "esrgan",
+        "real-esrgan",
+        "rs-esrgan",
+    ]
 
     # 校验模型名称
-    if model_name not in ["srgan", "esrgan", "real-esrgan", "rs-esrgan"]:
+    if model_name not in model_list:
         raise ValueError(
-            "The model name is not corrected, please Enter srgan, esrgan, real-esrgan or rs-esrgan."
+            "The model name is not corrected, please enter 'srcnn', 'vdsr', 'srgan', 'esrgan', 'real-esrgan' or 'rs-esrgan'."
         )
 
     # 获取数据集配置
@@ -49,7 +76,11 @@ def build_sr_model(config):
 
     # 构建模型
     sr_model = None
-    if model_name == "srgan":
+    if model_name == "srcnn":
+        sr_model = SRCNN(**model_config)
+    elif model_name == "vdsr":
+        sr_model = VDSR(**model_config)
+    elif model_name == "srgan":
         sr_model = SRGAN(**model_config)
     elif model_name == "esrgan":
         sr_model = ESRGAN(**model_config)

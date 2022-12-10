@@ -1,8 +1,8 @@
 # 数据集
 [dataset]
-downsample_mode = "bicubic"                                          # 下采样方式（"bicubic"、"second-order"）
-train_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
-test_resource_path = "/run/media/zyk/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
+downsample_mode = "bicubic"                                               # 下采样方式（"bicubic"、"second-order"）
+train_resource_path = "/run/media/zyk-arch/Data/数据集/DIV2K/DIV2K_train_HR" # 训练图片资源路径
+test_resource_path = "/run/media/zyk-arch/Data/数据集/DIV2K/DIV2K_valid_HR"  # 测试图片资源路径
 # train_resource_path = "/home/hh/zyk/datasets/DF_2K/train_HR" # 训练图片资源路径
 # test_resource_path = "/home/hh/zyk/datasets/DF_2K/valid_HR"  # 测试图片资源路径
 scale_factor = 4            # 下采样倍数
@@ -14,10 +14,63 @@ max_workers = 4             # 处理图片的最大线程数
 data_enhancement_factor = 1 # 数据增强因子
 
 
+# 评估数据集
+[evaluate_dataset]
+[evaluate_dataset.DIV2K]
+lr_img_dir = ""        # 低分辨率图像文件夹路径，若 lr_img_dir 和 hr_img_dir 为空，表示使用 dataset 配置中的 test_resource_path 作为评估数据集
+hr_img_dir = ""        # 原图文件夹路径
+dataset_name = "DIV2K" # 数据集名称
+is_count = true        # 是否进行统计，只能设置一个数据集进行统计
+
+[evaluate_dataset.set5]
+lr_img_dir = "./image/set5/LRbicx4"  # 低分辨率图像文件夹路径
+hr_img_dir = "./image/set5/GTmod12" # 原图文件夹路径
+dataset_name = "Set5"                # 数据集名称
+is_count = false                     # 是否进行统计
+
+[evaluate_dataset.set14]
+lr_img_dir = "./image/set14/LRbicx4" # 低分辨率图像文件夹路径
+hr_img_dir = "./image/set14/GTmod12" # 原图文件夹路径
+dataset_name = "Set14"               # 数据集名称
+is_count = false                     # 是否进行统计
+
+
 # 模型
 [model]
-model_name = "esrgan" # 模型名称（"srgan"、"esrgan"、"real-esrgan"、"rs-esrgan"）
-mode = "train"        # 训练模式（"pretrain"、"train"）
+model_name = "srcnn" # 模型名称（"srcnn"、"vdsr"、"srgan"、"esrgan"、"real-esrgan"、"rs-esrgan"）
+mode = "train"       # 训练模式（"pretrain"、"train"）
+
+# VDSR
+[model.srcnn]
+result_path = "./result"  # 结果保存路径
+epochs = 100              # 训练总轮数
+init_epoch = 1            # 初始训练轮数
+batch_size = 4            # 单次训练样本数
+rdb_num = 16              # 残差块数目
+log_interval = 20         # 打印日志间隔
+save_images_interval = 5  # 保存图片间隔
+save_models_interval = 5  # 保存模型间隔
+save_history_interval = 5 # 保存历史数据（损失，准确率）间隔
+pretrain_model_path = ""  # 预训练模型路径
+use_sn = false            # 是否使用谱归一化层
+use_mixed_float = false   # 是否使用混合精度
+use_ema = false           # 是否使用 EMA
+
+# VDSR
+[model.vdsr]
+result_path = "./result"   # 结果保存路径
+epochs = 100               # 训练总轮数
+init_epoch = 1             # 初始训练轮数
+batch_size = 4             # 单次训练样本数
+rdb_num = 16               # 残差块数目
+log_interval = 20          # 打印日志间隔
+save_images_interval = 10  # 保存图片间隔
+save_models_interval = 10  # 保存模型间隔
+save_history_interval = 10 # 保存历史数据（损失，准确率）间隔
+pretrain_model_path = ""   # 预训练模型路径
+use_sn = false             # 是否使用谱归一化层
+use_mixed_float = false    # 是否使用混合精度
+use_ema = false            # 是否使用 EMA
 
 # SRGAN
 [model.srgan]
@@ -38,7 +91,7 @@ use_ema = false           # 是否使用 EMA
 # ESRGAN
 [model.esrgan]
 result_path = "./result"  # 结果保存路径
-epochs = 1000             # 训练总轮数
+epochs = 100              # 训练总轮数
 init_epoch = 1            # 初始训练轮数
 batch_size = 4            # 单次训练样本数
 log_interval = 20         # 打印日志间隔

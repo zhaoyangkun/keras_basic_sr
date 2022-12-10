@@ -400,8 +400,8 @@ def create_vgg_19_features_model(loss_type="srgan"):
     if loss_type == "srgan":
         outputs = vgg_model.get_layer("block5_conv4_relu").output
     elif loss_type == "esrgan":
-        outputs = vgg_model.get_layer("block5_conv4").output
-        # outputs = vgg_model.get_layer("block5_conv4_relu").output
+        # outputs = vgg_model.get_layer("block5_conv4").output
+        outputs = vgg_model.get_layer("block5_conv4_relu").output
     elif loss_type == "real-esrgan":
         layers = [
             "block1_conv2",
