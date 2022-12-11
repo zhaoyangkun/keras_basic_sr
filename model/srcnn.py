@@ -122,6 +122,7 @@ class SRCNN:
 
         # 创建模型
         self.generator = self.build_generator()
+        self.generator.summary()
 
     def check_mixed(self):
         """

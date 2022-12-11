@@ -1,4 +1,4 @@
-from tensorflow.keras.layers import Add, Conv2D, Input, ReLU
+from tensorflow.keras.layers import Add, Conv2D, Input
 from tensorflow.keras.models import Model
 
 from model.srcnn import SRCNN
@@ -67,18 +67,12 @@ class VDSR(SRCNN):
         """
         构建生成器
         """
-
-        def conv2d_relu(x, filters, kernel_size, strides=1, padding="same"):
-            x = Conv2D(filters, kernel_size, strides=strides, padding=padding)(x)
-            x = ReLU()(x)
-            return x
-
         inputs = Input(shape=[None, None, 3])
 
-        x = conv2d_relu(inputs, 64, 3)
+        x = Conv2D(64, 3, padding="same", activation="relu")(inputs)
 
         for _ in range(18):
-            x = conv2d_relu(x, 64, 3)
+            x = Conv2D(64, 3, padding="same", activation="relu")(x)
 
         x = Conv2D(3, 3, padding="same")(x)
 
