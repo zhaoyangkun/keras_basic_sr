@@ -102,6 +102,41 @@ def upsample_rfb(x, number, method="nearest", channels=64):
     return x
 
 
+# 交替上采样 + MRFB
+def upsample_mrfb(x, number, method="nearest", channels=64):
+    # 最近邻域插值上采样
+    if method == "nearest":
+        x = UpSampling2D(
+            size=2,
+            interpolation="nearest",
+            name="up_sample_nearest_" + str(number),
+        )(x)
+    # 双线性插值上采样
+    elif method == "bilinear":
+        x = UpSampling2D(
+            size=2,
+            interpolation="bilinear",
+            name="up_sample_bilinear_" + str(number),
+        )(x)
+    # 亚像素卷积上采样
+    elif method == "subpixel":
+        x = Conv2D(
+            channels * 4,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+            name="up_sample_conv2d_" + str(number),
+        )(x)
+        x = subpixel_conv2d("up_sample_subpixel_" + str(number), 2)(x)
+    else:
+        raise ValueError("Unsupported upsample method!")
+
+    x = MRFB(x, in_channels=channels, out_channels=channels)
+    x = LeakyReLU(alpha=0.2)(x)
+
+    return x
+
+
 # 构建 dense block
 def dense_block(input):
     x1 = Conv2D(
@@ -328,6 +363,118 @@ def RRFDB(input, input_channels=64, growth_channels=32):
     x = RFDB(input, input_channels, growth_channels)
     x = RFDB(x, input_channels, growth_channels)
     x = RFDB(x, input_channels, growth_channels)
+
+    x = Lambda(lambda x: x * 0.2)(x)
+    output = Add()([x, input])
+
+    return output
+
+
+# 构建 MRFB
+def MRFB(input, in_channels=64, out_channels=32):
+    branch_channels = in_channels // 2
+
+    shortcut = Conv2D(
+        out_channels,
+        kernel_size=3,
+        strides=1,
+        padding="same",
+    )(input)
+
+    # 分支 1
+    x_1 = Conv2D(
+        branch_channels,
+        kernel_size=1,
+        strides=1,
+        padding="same",
+    )(input)
+    x_1 = LeakyReLU(alpha=0.2)(x_1)
+    x_1 = Conv2D(
+        branch_channels,
+        kernel_size=(1, 3),
+        strides=1,
+        padding="same",
+    )(x_1)
+    x_1 = LeakyReLU(alpha=0.2)(x_1)
+    x_1 = Conv2D(
+        branch_channels,
+        kernel_size=3,
+        strides=1,
+        dilation_rate=3,
+        padding="same",
+    )(x_1)
+
+    # 分支 2
+    x_2 = Conv2D(
+        branch_channels,
+        kernel_size=1,
+        strides=1,
+        padding="same",
+    )(input)
+    x_2 = LeakyReLU(alpha=0.2)(x_2)
+    x_2 = Conv2D(
+        branch_channels,
+        kernel_size=(3, 1),
+        strides=1,
+        padding="same",
+    )(x_2)
+    x_2 = LeakyReLU(alpha=0.2)(x_2)
+    x_2 = Conv2D(
+        branch_channels,
+        kernel_size=3,
+        strides=1,
+        dilation_rate=5,
+        padding="same",
+    )(x_2)
+
+    output = Concatenate()([x_1, x_2])
+    output = Conv2D(
+        out_channels,
+        kernel_size=1,
+        strides=1,
+        padding="same",
+    )(output)
+    output = Lambda(lambda x: x * 0.2)(output)
+    output = Add()([output, shortcut])
+
+    return output
+
+
+# 构建 MRFRB
+def MRFRB(input, in_channels=64, growth_channels=32):
+    x_1 = MRFB(
+        input,
+        in_channels=in_channels,
+        out_channels=growth_channels,
+    )
+    x_1 = LeakyReLU(alpha=0.2)(x_1)
+
+    x_2 = Concatenate()([input, x_1])
+    x_2 = MRFB(
+        x_2,
+        in_channels=in_channels + growth_channels,
+        out_channels=growth_channels,
+    )
+    x_2 = LeakyReLU(alpha=0.2)(x_2)
+
+    x_3 = Concatenate()([input, x_1, x_2])
+    x_3 = MRFB(
+        x_3,
+        in_channels=in_channels + growth_channels * 2,
+        out_channels=in_channels,
+    )
+    x_3 = Lambda(lambda x: x * 0.2)(x_3)
+
+    output = Add()([x_3, input])
+
+    return output
+
+
+# 构建 MRFRDB
+def MRFRDB(input, input_channels=64, growth_channels=32):
+    x = MRFRB(input, input_channels, growth_channels)
+    x = MRFRB(x, input_channels, growth_channels)
+    x = MRFRB(x, input_channels, growth_channels)
 
     x = Lambda(lambda x: x * 0.2)(x)
     output = Add()([x, input])

@@ -1,6 +1,8 @@
 import json
 import os
 
+import tensorflow as tf
+
 from model.esrgan import ESRGAN
 from model.real_esrgan import RealESRGAN
 from model.rs_esrgan import RS_ESRGAN
@@ -16,21 +18,17 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
-# def setup_gpu():
-#     """
-#     设置 GPU
-#     """
-#     gpus = tf.config.list_physical_devices("GPU")
-#     if gpus:
-#         try:
-#             tf.config.experimental.set_memory_growth(gpus[0], True)
-#             # tf.config.set_logical_device_configuration(
-#             #     gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=1024)]
-#             # )
-#             # logical_gpus = tf.config.list_logical_devices("GPU")
-#             # print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-#         except RuntimeError as e:
-#             print(e)
+def setup_gpu():
+    """
+    设置 GPU
+    """
+    gpus = tf.config.list_physical_devices("GPU")
+    for gpu in gpus:
+        # 设置 GPU 内存自动增长
+        tf.config.experimental.set_memory_growth(gpu, True)
+        # tf.config.set_logical_device_configuration(
+        #     gpu, [tf.config.LogicalDeviceConfiguration(memory_limit=1024)]
+        # )
 
 
 def build_sr_model(config):
@@ -93,6 +91,7 @@ def build_sr_model(config):
 
 
 if __name__ == "__main__":
+    setup_gpu()  # 设置 GPU
     config = parse_toml("./config/config.toml")  # 读取 toml 配置文件
     sr_model = build_sr_model(config)  # 构建超分模型
 

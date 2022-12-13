@@ -1,8 +1,8 @@
-from tensorflow.keras.layers import Activation, Add, Conv2D, Input, LeakyReLU
+from tensorflow.keras.layers import Activation, Conv2D, Input, LeakyReLU
 from tensorflow.keras.models import Model
-from util.layer import RFB, RRDB, RRFDB, upsample_rfb
 
 from model.real_esrgan import RealESRGAN
+from util.layer import MRFRDB, upsample_mrfb
 
 
 class RS_ESRGAN(RealESRGAN):
@@ -67,35 +67,39 @@ class RS_ESRGAN(RealESRGAN):
         # 低分辨率图像作为输入
         lr_input = Input(shape=(None, None, 3))
 
-        # RRDB 之前
         x_start = Conv2D(
             64,
             kernel_size=3,
             strides=1,
             padding="same",
         )(lr_input)
-        x_start = LeakyReLU(0.5)(x_start)
+        x_start = LeakyReLU(alpha=0.2)(x_start)
 
-        # RRDB
+        # # RRDB
+        # x = x_start
+        # for _ in range(8):  # 默认为 16 块
+        #     x = RRDB(x)
+
+        # # RRFDB
+        # for _ in range(4):  # 默认为 8 块
+        #     x = RRFDB(x)
+
+        # # RRFDB 之后
+        # x = RFB(x, in_channels=64, out_channels=64)
+        # x = Add()([x, x_start])
+
+        # MRFRDB
         x = x_start
-        for _ in range(8):  # 默认为 16 块
-            x = RRDB(x)
-
-        # RRFDB
-        for _ in range(4):  # 默认为 8 块
-            x = RRFDB(x)
-
-        # RRFDB 之后
-        x = RFB(x, in_channels=64, out_channels=64)
-        x = Add()([x, x_start])
+        for _ in range(8):
+            x = MRFRDB(x)
 
         # 交替使用双线性插值和亚像素卷积上采样算法
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:
-                x = upsample_rfb(x, i + 1, method="subpixel", channels=64)
+                x = upsample_mrfb(x, i + 1, method="subpixel", channels=64)
             else:
-                x = upsample_rfb(x, i + 1, method="bilinear", channels=64)
+                x = upsample_mrfb(x, i + 1, method="bilinear", channels=64)
 
         x = Conv2D(
             64,
@@ -103,7 +107,7 @@ class RS_ESRGAN(RealESRGAN):
             strides=1,
             padding="same",
         )(x)
-        x = LeakyReLU(0.2)(x)
+        x = LeakyReLU(alpha=0.2)(x)
         x = Conv2D(
             3,
             kernel_size=3,
