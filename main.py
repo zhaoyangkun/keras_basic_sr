@@ -4,8 +4,8 @@ import os
 import tensorflow as tf
 
 from model.esrgan import ESRGAN
+from model.ha_esrgan import HA_ESRGAN
 from model.real_esrgan import RealESRGAN
-from model.rs_esrgan import RS_ESRGAN
 from model.srcnn import SRCNN
 from model.srgan import SRGAN
 from model.vdsr import VDSR
@@ -43,13 +43,13 @@ def build_sr_model(config):
         "srgan",
         "esrgan",
         "real-esrgan",
-        "rs-esrgan",
+        "ha-esrgan",
     ]
 
     # 校验模型名称
     if model_name not in model_list:
         raise ValueError(
-            "The model name is not corrected, please enter 'srcnn', 'vdsr', 'srgan', 'esrgan', 'real-esrgan' or 'rs-esrgan'."
+            "The model name is not corrected, please enter 'srcnn', 'vdsr', 'srgan', 'esrgan', 'real-esrgan' or 'ha-esrgan'."
         )
 
     # 获取数据集配置
@@ -69,8 +69,7 @@ def build_sr_model(config):
             ensure_ascii=False,
             sort_keys=False,
             separators=(",", ":"),
-        )
-    )
+        ))
 
     # 构建模型
     sr_model = None
@@ -82,8 +81,8 @@ def build_sr_model(config):
         sr_model = SRGAN(**model_config)
     elif model_name == "esrgan":
         sr_model = ESRGAN(**model_config)
-    elif model_name == "rs-esrgan":
-        sr_model = RS_ESRGAN(**model_config)
+    elif model_name == "ha-esrgan":
+        sr_model = HA_ESRGAN(**model_config)
     elif model_name == "real-esrgan":
         sr_model = RealESRGAN(**model_config)
 
@@ -102,5 +101,4 @@ if __name__ == "__main__":
         sr_model.train()  # 开始训练
     else:
         raise ValueError(
-            "Unsupported mode, please set the mode to 'pretrain' or 'train'."
-        )
+            "Unsupported mode, please set the mode to 'pretrain' or 'train'.")

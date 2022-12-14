@@ -1,18 +1,12 @@
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.applications import VGG19
-from tensorflow.keras.layers import (
-    Add,
-    Concatenate,
-    Conv2D,
-    Input,
-    Lambda,
-    LeakyReLU,
-    MaxPooling2D,
-    PReLU,
-    ReLU,
-    UpSampling2D,
-)
+from tensorflow.keras.layers import (Activation, Add, AvgPool2D,
+                                     BatchNormalization, Concatenate, Conv2D,
+                                     Dense, GlobalAveragePooling2D,
+                                     GlobalMaxPooling2D, Input, Lambda,
+                                     LeakyReLU, MaxPooling2D, Multiply, PReLU,
+                                     ReLU, Reshape, UpSampling2D)
 from tensorflow_addons.layers import SpectralNormalization
 
 
@@ -20,9 +14,8 @@ from tensorflow_addons.layers import SpectralNormalization
 def spectral_norm_conv2d(input, use_sn=True, sn_dtype=None, **kwargs):
     if use_sn:
         if sn_dtype:
-            return SpectralNormalization(
-                Conv2D(**kwargs, dtype=sn_dtype), dtype=sn_dtype
-            )(input)
+            return SpectralNormalization(Conv2D(**kwargs, dtype=sn_dtype),
+                                         dtype=sn_dtype)(input)
         return SpectralNormalization(Conv2D(**kwargs))(input)
     else:
         return Conv2D(**kwargs)(input)
@@ -102,8 +95,8 @@ def upsample_rfb(x, number, method="nearest", channels=64):
     return x
 
 
-# 交替上采样 + MRFB
-def upsample_mrfb(x, number, method="nearest", channels=64):
+# 交替上采样 + MHARB
+def upsample_mharb(x, number, method="nearest", channels=64):
     # 最近邻域插值上采样
     if method == "nearest":
         x = UpSampling2D(
@@ -131,7 +124,7 @@ def upsample_mrfb(x, number, method="nearest", channels=64):
     else:
         raise ValueError("Unsupported upsample method!")
 
-    x = MRFB(x, in_channels=channels, out_channels=channels)
+    x = MHARB(x, in_channels=channels, out_channels=channels)
     x = LeakyReLU(alpha=0.2)(x)
 
     return x
@@ -370,16 +363,79 @@ def RRFDB(input, input_channels=64, growth_channels=32):
     return output
 
 
-# 构建 MRFB
-def MRFB(input, in_channels=64, out_channels=32):
-    branch_channels = in_channels // 2
+# 通道注意力
+def channel_attention(input, ratio=8):
+    channels = input.shape[-1]
 
-    shortcut = Conv2D(
-        out_channels,
-        kernel_size=3,
-        strides=1,
-        padding="same",
-    )(input)
+    max_pool = GlobalMaxPooling2D()(input)
+    # (batch, channels)
+    max_pool = Reshape((1, 1, channels))(max_pool)
+    # (batch, 1, 1, channels)
+    max_pool = Conv2D(channels // ratio,
+                      kernel_size=1,
+                      strides=1,
+                      padding="same",
+                      activation="relu")(max_pool)
+    # (batch, 1, 1, channels // ratio)
+    max_pool = Conv2D(channels, kernel_size=1, strides=1,
+                      padding="same")(max_pool)
+    # (batch, 1, 1, channels)
+
+    avg_pool = GlobalAveragePooling2D()(input)
+    avg_pool = Reshape((1, 1, channels))(avg_pool)
+    avg_pool = Conv2D(channels // ratio,
+                      kernel_size=1,
+                      strides=1,
+                      padding="same",
+                      activation="relu")(avg_pool)
+    avg_pool = Conv2D(channels, kernel_size=1, strides=1,
+                      padding="same")(avg_pool)
+    # (batch, 1, 1, channels)
+
+    feature = Add()([max_pool, avg_pool])  # (batch, 1, 1, channels)
+    feature = Activation("sigmoid")(feature)  # (batch, 1, 1, 1)
+
+    x = Multiply()([input, feature])  # (batch, height, width, channels)
+
+    return x
+
+
+# 坐标注意力
+def coordinate_attention(input, reduction=32, use_bn=False):
+
+    def coord_act(x):
+        tmpx = tf.nn.relu6(x + 3) / 6
+        return x * tmpx
+
+    _, h, w, c = input.shape
+    x_h = AvgPool2D(pool_size=(1, w), strides=1,
+                    padding="same")(input)  # [b, h, 1, c]
+    x_w = AvgPool2D(pool_size=(h, 1), strides=1,
+                    padding="same")(input)  # [b, 1, w, c]
+    x_w = tf.transpose(x_w, [0, 2, 1, 3])  # [b, w, 1, c]
+
+    y = tf.concat([x_h, x_w], axis=1)  # [b, h+w, 1, c]
+    mip = max(8, c // reduction)
+    y = Conv2D(mip, 1, strides=1, padding="same")(y)  # [b, h+w, 1, mip]
+    if use_bn:
+        y = BatchNormalization()(y)
+    y = coord_act(y)
+
+    x_h, x_w = tf.split(y, num_or_size_splits=[h, w],
+                        axis=1)  # [b, h, 1, mip], [b, w, 1, mip]
+    x_w = tf.transpose(x_w, [0, 2, 1, 3])  # [b, 1, w, mip]
+    a_h = Conv2D(c, 1, strides=1, padding="same",
+                 activation="sigmoid")(x_h)  # [b, h, 1, c]
+    a_w = Conv2D(c, 1, strides=1, padding="same",
+                 activation="sigmoid")(x_w)  # [b, 1, w, c]
+    output = input * a_h * a_w  # [b, h, w, c]
+
+    return output
+
+
+# 空间注意力
+def spatial_attention(input, in_channels=64, out_channels=32):
+    branch_channels = in_channels // 2
 
     # 分支 1
     x_1 = Conv2D(
@@ -402,7 +458,7 @@ def MRFB(input, in_channels=64, out_channels=32):
         strides=1,
         dilation_rate=3,
         padding="same",
-    )(x_1)
+    )(x_1)  # (b, h, w, branch_channels)
 
     # 分支 2
     x_2 = Conv2D(
@@ -425,58 +481,43 @@ def MRFB(input, in_channels=64, out_channels=32):
         strides=1,
         dilation_rate=5,
         padding="same",
-    )(x_2)
+    )(x_2)  # (b, h, w, branch_channels)
 
-    output = Concatenate()([x_1, x_2])
+    output = Concatenate()([x_1, x_2])  # (b, h, w, branch_channels * 2)
     output = Conv2D(
         out_channels,
         kernel_size=1,
         strides=1,
         padding="same",
-    )(output)
-    output = Lambda(lambda x: x * 0.2)(output)
-    output = Add()([output, shortcut])
+    )(output)  # (b, h, w, in_channels)
 
     return output
 
 
-# 构建 MRFRB
-def MRFRB(input, in_channels=64, growth_channels=32):
-    x_1 = MRFB(
-        input,
-        in_channels=in_channels,
-        out_channels=growth_channels,
-    )
-    x_1 = LeakyReLU(alpha=0.2)(x_1)
+# 构建 MHARB
+def MHARB(input, in_channels=64, out_channels=32):
+    shortcut = Conv2D(out_channels, 3, strides=1, padding="same")(input)
 
-    x_2 = Concatenate()([input, x_1])
-    x_2 = MRFB(
-        x_2,
-        in_channels=in_channels + growth_channels,
-        out_channels=growth_channels,
-    )
-    x_2 = LeakyReLU(alpha=0.2)(x_2)
+    # 利用空间注意力模块来提取空间信息
+    x = spatial_attention(input,
+                          in_channels=in_channels,
+                          out_channels=out_channels)  # (b, h, w, out_channels)
 
-    x_3 = Concatenate()([input, x_1, x_2])
-    x_3 = MRFB(
-        x_3,
-        in_channels=in_channels + growth_channels * 2,
-        out_channels=in_channels,
-    )
-    x_3 = Lambda(lambda x: x * 0.2)(x_3)
+    # 利用通道注意力模块中提取通道信息
+    x = channel_attention(x)  # (b, h, w, out_channels)
 
-    output = Add()([x_3, input])
+    output = Add()([x, shortcut])
 
     return output
 
 
-# 构建 MRFRDB
-def MRFRDB(input, input_channels=64, growth_channels=32):
-    x = MRFRB(input, input_channels, growth_channels)
-    x = MRFRB(x, input_channels, growth_channels)
-    x = MRFRB(x, input_channels, growth_channels)
-
+# 构建 MHARG
+def MHARG(input, in_channels=64, out_channels=64):
+    x = MHARB(input, in_channels, out_channels)
+    x = MHARB(x, in_channels, out_channels)
+    x = MHARB(x, in_channels, out_channels)
     x = Lambda(lambda x: x * 0.2)(x)
+
     output = Add()([x, input])
 
     return output
@@ -488,14 +529,20 @@ def create_vgg19_custom_model():
     input = Input(shape=(None, None, 3))
     x = Conv2D(64, (3, 3), padding="same", name="block1_conv1")(input)
     x = ReLU()(x)
-    x = Conv2D(64, (3, 3), padding="same", name="block1_conv2", dtype="float32")(x)
+    x = Conv2D(64, (3, 3),
+               padding="same",
+               name="block1_conv2",
+               dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block1_pool")(x)
 
     # Block 2
     x = Conv2D(128, (3, 3), padding="same", name="block2_conv1")(x)
     x = ReLU()(x)
-    x = Conv2D(128, (3, 3), padding="same", name="block2_conv2", dtype="float32")(x)
+    x = Conv2D(128, (3, 3),
+               padding="same",
+               name="block2_conv2",
+               dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block2_pool")(x)
 
@@ -506,7 +553,10 @@ def create_vgg19_custom_model():
     x = ReLU()(x)
     x = Conv2D(256, (3, 3), padding="same", name="block3_conv3")(x)
     x = ReLU()(x)
-    x = Conv2D(256, (3, 3), padding="same", name="block3_conv4", dtype="float32")(x)
+    x = Conv2D(256, (3, 3),
+               padding="same",
+               name="block3_conv4",
+               dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block3_pool")(x)
 
@@ -517,7 +567,10 @@ def create_vgg19_custom_model():
     x = ReLU()(x)
     x = Conv2D(512, (3, 3), padding="same", name="block4_conv3")(x)
     x = ReLU()(x)
-    x = Conv2D(512, (3, 3), padding="same", name="block4_conv4", dtype="float32")(x)
+    x = Conv2D(512, (3, 3),
+               padding="same",
+               name="block4_conv4",
+               dtype="float32")(x)
     x = ReLU()(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block4_pool")(x)
 
@@ -528,7 +581,10 @@ def create_vgg19_custom_model():
     x = ReLU()(x)
     x = Conv2D(512, (3, 3), padding="same", name="block5_conv3")(x)
     x = ReLU()(x)
-    x = Conv2D(512, (3, 3), padding="same", name="block5_conv4", dtype="float32")(x)
+    x = Conv2D(512, (3, 3),
+               padding="same",
+               name="block5_conv4",
+               dtype="float32")(x)
     x = ReLU(name="block5_conv4_relu", dtype="float32")(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name="block5_pool")(x)
 
@@ -568,6 +624,7 @@ def create_vgg_19_features_model(loss_type="srgan"):
 
 # EMA
 class EMA:
+
     def __init__(self, model, decay):
         self.model = model
         self.decay = decay
@@ -586,9 +643,8 @@ class EMA:
         for param in self.model.variables:
             if param.trainable:
                 assert param.name in self.shadow
-                new_average = (
-                    1.0 - self.decay
-                ) * param.value() + self.decay * self.shadow[param.name]
+                new_average = (1.0 - self.decay) * param.value(
+                ) + self.decay * self.shadow[param.name]
                 self.shadow[param.name] = new_average
 
     # 将模型参数变成影子值，backup是真实值的备份
