@@ -133,7 +133,6 @@ class ESRGAN(SRGAN):
             strides=1,
             padding="same",
         )(x)
-        x = Lambda(lambda x: x * 0.2)(x)
         x = Add()([x, x_start])
 
         # 上采样

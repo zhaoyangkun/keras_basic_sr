@@ -484,6 +484,7 @@ def spatial_attention(input, in_channels=64, out_channels=32):
     )(x_2)  # (b, h, w, branch_channels)
 
     output = Concatenate()([x_1, x_2])  # (b, h, w, branch_channels * 2)
+    output = Add()([output, input])  # (b, h, w, branch_channels * 2)
     output = Conv2D(
         out_channels,
         kernel_size=1,

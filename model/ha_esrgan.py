@@ -1,4 +1,4 @@
-from tensorflow.keras.layers import Activation, Conv2D, Input, LeakyReLU
+from tensorflow.keras.layers import Activation, Conv2D, Input, LeakyReLU, Add
 from tensorflow.keras.models import Model
 
 from model.real_esrgan import RealESRGAN
@@ -76,10 +76,19 @@ class HA_ESRGAN(RealESRGAN):
         )(lr_input)
         x_start = LeakyReLU(alpha=0.2)(x_start)
 
+        # MHARG
         x = x_start
-        # 残差组
         for _ in range(8):
             x = MHARG(x)
+
+        # MHARG 之后
+        x = Conv2D(
+            64,
+            kernel_size=3,
+            strides=1,
+            padding="same",
+        )(x)
+        x = Add()([x, x_start])
 
         # 交替使用双线性插值和亚像素卷积上采样算法
         for i in range(self.scale_factor // 2):
