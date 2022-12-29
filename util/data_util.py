@@ -22,7 +22,8 @@ kernel_props_1 = {
     "sigma_y_range": [0.2, 3],
     "betag_range": [0.5, 4],
     "betap_range": [1, 2],
-    "sinc_prob": 0.1,
+    "sinc_prob":
+    0.1,
 }
 
 kernel_props_2 = {
@@ -39,7 +40,8 @@ kernel_props_2 = {
     "sigma_y_range": [0.2, 1.5],
     "betag_range": [0.5, 4],
     "betap_range": [1, 2],
-    "sinc_prob": 0.1,
+    "sinc_prob":
+    0.1,
 }
 
 
@@ -59,7 +61,8 @@ def mesh_grid(kernel_size):
 
 def sigma_matrix2(sig_x, sig_y, theta):
     d_matrix = [[sig_x**2, 0], [0, sig_y**2]]
-    u_matrix = [[tf.cos(theta), -tf.sin(theta)], [tf.sin(theta), tf.cos(theta)]]
+    u_matrix = [[tf.cos(theta), -tf.sin(theta)],
+                [tf.sin(theta), tf.cos(theta)]]
 
     return tf.matmul(u_matrix, tf.matmul(d_matrix, tf.transpose(u_matrix)))
 
@@ -93,9 +96,12 @@ def filter2D(imgs, kernels):
     kernels = tf.repeat(kernels, repeats=[c], axis=-1)  # k, k, 1, b * c
 
     # kernel_height, kernel_width, input_filters, output_filters
-    conv = layers.Conv2D(
-        b * c, k, weights=[kernels], use_bias=False, groups=b * c, dtype="float32"
-    )
+    conv = layers.Conv2D(b * c,
+                         k,
+                         weights=[kernels],
+                         use_bias=False,
+                         groups=b * c,
+                         dtype="float32")
     conv.trainable = False
 
     # 对图像进行卷积
@@ -124,7 +130,11 @@ def gaussian_filter2d(imgs, filter):
     filter = tf.expand_dims(filter, axis=-1)  # k, k, 1, 1
 
     # kernel_height, kernel_width, input_filters, output_filters
-    conv = layers.Conv2D(1, k, weights=[filter], use_bias=False, dtype="float32")
+    conv = layers.Conv2D(1,
+                         k,
+                         weights=[filter],
+                         use_bias=False,
+                         dtype="float32")
     conv.trainable = False
 
     imgs = conv(imgs)
@@ -136,6 +146,7 @@ def gaussian_filter2d(imgs, filter):
 
 
 class USMSharp:
+
     def __init__(self, filter_size=51):
         self.filter_size = 51
         self.sigma = 0.3 * ((filter_size - 1) * 0.5 - 1) + 0.8
@@ -163,25 +174,15 @@ class USMSharp:
 
 
 def lowpass_kernel(x, y, cutoff, kernel_size):
-    return (
-        cutoff
-        * tf.math.special.bessel_j1(
-            cutoff
-            * tf.sqrt(
-                (x - (kernel_size - 1) / 2) ** 2 + (y - (kernel_size - 1) / 2) ** 2
-            )
-        )
-        / (
-            2
-            * np.pi
-            * tf.sqrt(
-                (x - (kernel_size - 1) / 2) ** 2 + (y - (kernel_size - 1) / 2) ** 2
-            )
-        )
-    )
+    return (cutoff * tf.math.special.bessel_j1(
+        cutoff * tf.sqrt((x - (kernel_size - 1) / 2)**2 +
+                         (y - (kernel_size - 1) / 2)**2)) /
+            (2 * np.pi * tf.sqrt((x - (kernel_size - 1) / 2)**2 +
+                                 (y - (kernel_size - 1) / 2)**2)))
 
 
 def inner_kernel_map(x1, y1, z, cutoff, kernel_size):
+
     def inner_func(arr):
         if arr[0] == x1 and arr[1] == y1:
             return z
@@ -259,16 +260,21 @@ def random_bivariate_Gaussian(kernel_size, kernel_props, isotropic=True):
         sigma_y = sigma_x
         rotation = 0
 
-    kernel = bivariate_Gaussian(
-        kernel_size, sigma_x, sigma_y, rotation, isotropic=isotropic
-    )
+    kernel = bivariate_Gaussian(kernel_size,
+                                sigma_x,
+                                sigma_y,
+                                rotation,
+                                isotropic=isotropic)
 
     return kernel / tf.reduce_sum(kernel)
 
 
-def bivariate_generalized_Gaussian(
-    kernel_size, sig_x, sig_y, theta, beta, isotropic=True
-):
+def bivariate_generalized_Gaussian(kernel_size,
+                                   sig_x,
+                                   sig_y,
+                                   theta,
+                                   beta,
+                                   isotropic=True):
     grid, _, _ = mesh_grid(kernel_size)
 
     if isotropic:
@@ -286,7 +292,9 @@ def bivariate_generalized_Gaussian(
     return kernel / tf.reduce_sum(kernel)
 
 
-def random_bivariate_generalized_Gaussian(kernel_size, kernel_props, isotropic=True):
+def random_bivariate_generalized_Gaussian(kernel_size,
+                                          kernel_props,
+                                          isotropic=True):
     rotation_range = (-math.pi, math.pi)
 
     sigma_x_range = kernel_props["sigma_x_range"]
@@ -314,9 +322,12 @@ def random_bivariate_generalized_Gaussian(kernel_size, kernel_props, isotropic=T
     else:
         beta = tf.random.uniform([], 1, beta_range[1])
 
-    kernel = bivariate_generalized_Gaussian(
-        kernel_size, sigma_x, sigma_y, rotation, beta, isotropic=isotropic
-    )
+    kernel = bivariate_generalized_Gaussian(kernel_size,
+                                            sigma_x,
+                                            sigma_y,
+                                            rotation,
+                                            beta,
+                                            isotropic=isotropic)
 
     return kernel / tf.reduce_sum(kernel)
 
@@ -366,34 +377,44 @@ def random_bivariate_plateau(kernel_size, kernel_props, isotropic=True):
     else:
         beta = tf.random.uniform([], 1, beta_range[1])
 
-    kernel = bivariate_plateau(
-        kernel_size, sigma_x, sigma_y, rotation, beta, isotropic=isotropic
-    )
+    kernel = bivariate_plateau(kernel_size,
+                               sigma_x,
+                               sigma_y,
+                               rotation,
+                               beta,
+                               isotropic=isotropic)
 
     return kernel / tf.reduce_sum(kernel)
 
 
 def random_mixed_kernels(kernel_size, kernel_props):
-    kernel_type = random.choices(
-        kernel_props["kernel_list"], kernel_props["kernel_prob"]
-    )[0]
+    kernel_type = random.choices(kernel_props["kernel_list"],
+                                 kernel_props["kernel_prob"])[0]
 
     if kernel_type == "iso":
-        kernel = random_bivariate_Gaussian(kernel_size, kernel_props, isotropic=True)
+        kernel = random_bivariate_Gaussian(kernel_size,
+                                           kernel_props,
+                                           isotropic=True)
     elif kernel_type == "aniso":
-        kernel = random_bivariate_Gaussian(kernel_size, kernel_props, isotropic=False)
+        kernel = random_bivariate_Gaussian(kernel_size,
+                                           kernel_props,
+                                           isotropic=False)
     elif kernel_type == "generalized_iso":
-        kernel = random_bivariate_generalized_Gaussian(
-            kernel_size, kernel_props, isotropic=True
-        )
+        kernel = random_bivariate_generalized_Gaussian(kernel_size,
+                                                       kernel_props,
+                                                       isotropic=True)
     elif kernel_type == "generalized_aniso":
-        kernel = random_bivariate_generalized_Gaussian(
-            kernel_size, kernel_props, isotropic=False
-        )
+        kernel = random_bivariate_generalized_Gaussian(kernel_size,
+                                                       kernel_props,
+                                                       isotropic=False)
     elif kernel_type == "plateau_iso":
-        kernel = random_bivariate_plateau(kernel_size, kernel_props, isotropic=True)
+        kernel = random_bivariate_plateau(kernel_size,
+                                          kernel_props,
+                                          isotropic=True)
     elif kernel_type == "plateau_aniso":
-        kernel = random_bivariate_plateau(kernel_size, kernel_props, isotropic=False)
+        kernel = random_bivariate_plateau(kernel_size,
+                                          kernel_props,
+                                          isotropic=False)
 
     return kernel
 
@@ -408,14 +429,16 @@ def generate_poisson_noise(img, scale=1.0, gray_noise=0):
 
     if cal_gray_noise:
         img_gray = tf.image.rgb_to_grayscale(img)
-        img_gray = tf.clip_by_value(tf.math.round(img_gray * 255.0), 0, 255) / 255.0
+        img_gray = tf.clip_by_value(tf.math.round(img_gray * 255.0), 0,
+                                    255) / 255.0
 
         vals_list = [
-            len(tf.unique(tf.reshape(img_gray[i, :, :, :], h * w))[0]) for i in range(b)
+            len(tf.unique(tf.reshape(img_gray[i, :, :, :], h * w))[0])
+            for i in range(b)
         ]
 
         vals_list = [
-            2 ** tf.math.ceil(tf.math.log(tf.cast(vals, tf.float32)) / base_2)
+            2**tf.math.ceil(tf.math.log(tf.cast(vals, tf.float32)) / base_2)
             for vals in vals_list
         ]
 
@@ -431,10 +454,11 @@ def generate_poisson_noise(img, scale=1.0, gray_noise=0):
 
     # use for-loop to get the unique values for each sample
     vals_list = [
-        len(tf.unique(tf.reshape(img[i, :, :, :], h * w * c))[0]) for i in range(b)
+        len(tf.unique(tf.reshape(img[i, :, :, :], h * w * c))[0])
+        for i in range(b)
     ]
     vals_list = [
-        2 ** tf.math.ceil(tf.math.log(tf.cast(vals, tf.float32)) / base_2)
+        2**tf.math.ceil(tf.math.log(tf.cast(vals, tf.float32)) / base_2)
         for vals in vals_list
     ]
 
@@ -452,11 +476,8 @@ def generate_poisson_noise(img, scale=1.0, gray_noise=0):
 
 
 def random_generate_poisson_noise(img, scale_range=(0, 1.0), gray_prob=0):
-    scale = (
-        tf.random.uniform([img.shape[0]], dtype=img.dtype)
-        * (scale_range[1] - scale_range[0])
-        + scale_range[0]
-    )
+    scale = (tf.random.uniform([img.shape[0]], dtype=img.dtype) *
+             (scale_range[1] - scale_range[0]) + scale_range[0])
 
     gray_noise = tf.random.uniform([img.shape[0]], dtype=img.dtype)
     gray_noise = tf.cast((gray_noise < gray_prob), dtype=tf.float32)
@@ -480,7 +501,8 @@ def generate_gaussian_noise(img, sigma=10, gray_noise=0):
     cal_gray_noise = tf.reduce_sum(gray_noise) > 0
 
     if cal_gray_noise:
-        noise_gray = tf.random.normal([1, h, w, 1], dtype=img.dtype) * sigma / 255.0
+        noise_gray = tf.random.normal([1, h, w, 1],
+                                      dtype=img.dtype) * sigma / 255.0
 
     # always calculate color noise
     noise = tf.random.normal([b, h, w, c], dtype=img.dtype) * sigma / 255.0
@@ -492,11 +514,8 @@ def generate_gaussian_noise(img, sigma=10, gray_noise=0):
 
 
 def random_generate_gaussian_noise(img, sigma_range=(0, 10), gray_prob=0):
-    sigma = (
-        tf.random.uniform([img.shape[0]], dtype=img.dtype)
-        * (sigma_range[1] - sigma_range[0])
-        + sigma_range[0]
-    )
+    sigma = (tf.random.uniform([img.shape[0]], dtype=img.dtype) *
+             (sigma_range[1] - sigma_range[0]) + sigma_range[0])
 
     # gray_noise = torch.rand(img.size(0), dtype=img.dtype, device=img.device)
     # gray_noise = (gray_noise < gray_prob).float()
@@ -564,14 +583,14 @@ def resize(ori_img, resize_width, resize_height, channels=3, mode="bicubic"):
     """图像缩放
 
     Args:
-        ori_img (tf.uint8 or tf.float32): 原图；三维(H, W, C)或四维(B, H, W, C)图像张量；若类型为 tf.float32，值区间为 [-1, 1] ；若类型为 tf.uint8，值区间为 [0, 255]
+        ori_img (tf.uint8 or tf.float32): 原图；三维(H, W, C)或四维(B, H, W, C)图像张量；若类型为 tf.float32，值区间为 [0, 1] ；若类型为 tf.uint8，值区间为 [0, 255]
         resize_width (int): 缩放后的宽度
         resize_height (int): 缩放后的高度
         channels (int): 通道数，默认值为 3
         mode (str): 插值算法，默认值为 "bicubic"，可选值为 "area", "bilinear", "bicubic"
 
     Returns:
-        tf.uint8 or tf.float32: 缩放后的图像，若类型为 tf.float32，值区间为 [-1, 1] ；若类型为 tf.uint8，值区间为 [0, 255]
+        tf.uint8 or tf.float32: 缩放后的图像，若类型为 tf.float32，值区间为 [0, 1] ；若类型为 tf.uint8，值区间为 [0, 255]
     """
     mode_dict = {
         "area": cv2.INTER_AREA,
@@ -581,15 +600,14 @@ def resize(ori_img, resize_width, resize_height, channels=3, mode="bicubic"):
     dtype = ori_img.dtype
 
     # 校验数值类型
-    assert (
-        dtype == tf.uint8 or dtype == tf.float32
-    ), "The dtype of ori_img must be tf.uint8 or tf.float32!"
+    assert (dtype == tf.uint8 or dtype == tf.float32
+            ), "The dtype of ori_img must be tf.uint8 or tf.float32!"
 
     # 校验插值算法
     if mode in mode_dict:
         # 若数据类型为 tf.float32，需进行反归一化
         if dtype == tf.float32:
-            ori_img = tf.cast((ori_img + 1) * 127.5, dtype=tf.uint8)
+            ori_img = tf.cast(tf.math.round(ori_img * 225.0), dtype=tf.uint8)
         # tensor 转 numpy
         ori_img_np = ori_img.numpy()
 
@@ -602,9 +620,8 @@ def resize(ori_img, resize_width, resize_height, channels=3, mode="bicubic"):
             )
         # 四维张量(B, H, W, C)，对每张图像分别缩放
         elif ori_img_np.ndim == 4:
-            proc_img = np.zeros(
-                [0, resize_height, resize_width, channels], dtype=np.uint8
-            )
+            proc_img = np.zeros([0, resize_height, resize_width, channels],
+                                dtype=np.uint8)
             for i in range(ori_img_np.shape[0]):
                 proc_img_temp = cv2.resize(
                     ori_img_np[i],
@@ -612,16 +629,16 @@ def resize(ori_img, resize_width, resize_height, channels=3, mode="bicubic"):
                     interpolation=mode_dict[mode],
                 )
                 proc_img = np.concatenate(
-                    [proc_img, np.expand_dims(proc_img_temp, axis=0)], axis=0
-                )
+                    [proc_img, np.expand_dims(proc_img_temp, axis=0)], axis=0)
         else:
-            raise TypeError("The shape of ori_img must be (H, W, C) or (B, H, W, C)")
+            raise TypeError(
+                "The shape of ori_img must be (H, W, C) or (B, H, W, C)")
     else:
         raise ValueError("Unsupported resize mode!")
     # 将 np.uint8 转换为 tf.uint8
     proc_img = tf.convert_to_tensor(proc_img, dtype=tf.uint8)
     # 若数据类型为 tf.float32，需进行归一化
     if dtype == tf.float32:
-        proc_img = tf.cast(proc_img, tf.float32) / 127.5 - 1
+        proc_img = tf.cast(proc_img, tf.float32) / 255.0
 
     return proc_img

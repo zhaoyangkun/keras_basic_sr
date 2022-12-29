@@ -107,7 +107,8 @@ class SRGAN:
         # 创建日志记录器
         log_dir_path = os.path.join(self.result_path, self.model_name, "logs")
         log_file_name = "%s_train.log" % self.model_name
-        self.logger = create_logger(log_dir_path, log_file_name, self.model_name)
+        self.logger = create_logger(log_dir_path, log_file_name,
+                                    self.model_name)
 
         # 创建优化器
         self.pre_optimizer = Adam(1e-4)
@@ -140,9 +141,8 @@ class SRGAN:
             self.data_enhancement_factor,
         )
 
-        self.pool_data = PoolData(
-            pool_size=10 * self.batch_size, batch_size=self.batch_size
-        )
+        self.pool_data = PoolData(pool_size=10 * self.batch_size,
+                                  batch_size=self.batch_size)
 
         # 创建 vgg 模型
         self.vgg = self.build_vgg()
@@ -168,9 +168,12 @@ class SRGAN:
         """
         if self.use_mixed_float:
             mixed_precision.set_global_policy("mixed_float16")
-            self.pre_optimizer = mixed_precision.LossScaleOptimizer(self.pre_optimizer)
-            self.gen_optimizer = mixed_precision.LossScaleOptimizer(self.gen_optimizer)
-            self.dis_optimizer = mixed_precision.LossScaleOptimizer(self.dis_optimizer)
+            self.pre_optimizer = mixed_precision.LossScaleOptimizer(
+                self.pre_optimizer)
+            self.gen_optimizer = mixed_precision.LossScaleOptimizer(
+                self.gen_optimizer)
+            self.dis_optimizer = mixed_precision.LossScaleOptimizer(
+                self.dis_optimizer)
 
     # def build_combined(self):
     #     """
@@ -205,7 +208,8 @@ class SRGAN:
         lr_img = Input(shape=[None, None, 3])
 
         # 第一部分：Conv2D + Relu
-        layer_1 = Conv2D(filters=64, kernel_size=9, strides=1, padding="same")(lr_img)
+        layer_1 = Conv2D(filters=64, kernel_size=9, strides=1,
+                         padding="same")(lr_img)
         layer_1 = PReLU(shared_axes=[1, 2])(layer_1)
 
         # 第二部分：rdb_num 个残差块（rdb_num 默认为 16）+ Conv2D + BN，
@@ -213,7 +217,8 @@ class SRGAN:
         layer_2 = layer_1
         for _ in range(self.rdb_num):
             layer_2 = self.residual_block(layer_2, 64)
-        layer_2 = Conv2D(filters=64, kernel_size=3, strides=1, padding="same")(layer_2)
+        layer_2 = Conv2D(filters=64, kernel_size=3, strides=1,
+                         padding="same")(layer_2)
         layer_2 = BatchNormalization(momentum=0.8)(layer_2)
         layer_2 = Add()([layer_2, layer_1])
 
@@ -315,15 +320,14 @@ class SRGAN:
                 # loss = tf.cast(loss, dtype=tf.float32)
         if self.use_mixed_float:
             scaled_gradients = tape.gradient(
-                scaled_loss, self.generator.trainable_variables
-            )
-            gradients = self.pre_optimizer.get_unscaled_gradients(scaled_gradients)
+                scaled_loss, self.generator.trainable_variables)
+            gradients = self.pre_optimizer.get_unscaled_gradients(
+                scaled_gradients)
         else:
             gradients = tape.gradient(loss, self.generator.trainable_variables)
 
         self.pre_optimizer.apply_gradients(
-            zip(gradients, self.generator.trainable_variables)
-        )
+            zip(gradients, self.generator.trainable_variables))
 
         return loss
 
@@ -345,9 +349,8 @@ class SRGAN:
             fake_labels = tf.zeros_like(hr_validity)
             # 计算判别器损失
             discriminator_loss = 0.5 * (
-                self.bce_loss(real_labels, hr_validity)
-                + self.bce_loss(fake_labels, gen_validity)
-            )
+                self.bce_loss(real_labels, hr_validity) +
+                self.bce_loss(fake_labels, gen_validity))
 
             # ***
             # 生成器
@@ -355,76 +358,39 @@ class SRGAN:
             content_loss = self.content_loss(hr_img, gen_img)  # 计算内容损失
             generator_loss = self.bce_loss(real_labels, gen_validity)  # 计算对抗损失
             generator_total_loss = (
-                self.loss_weights["content"] * content_loss
-                + self.loss_weights["gen"] * generator_loss
-            )  # 计算生成器总损失
+                self.loss_weights["content"] * content_loss +
+                self.loss_weights["gen"] * generator_loss)  # 计算生成器总损失
 
             # 若使用混合精度
             if self.use_mixed_float:
                 # 将损失值乘以损失标度值
                 scaled_disc_loss = self.dis_optimizer.get_scaled_loss(
-                    discriminator_loss
-                )
+                    discriminator_loss)
                 scaled_gen_loss = self.gen_optimizer.get_scaled_loss(
-                    generator_total_loss
-                )
-
-                # # 将数值类型从 float16 转换为 float32
-                # gen_img = tf.cast(gen_img, dtype=tf.float32)
-                # generator_total_loss = tf.cast(generator_total_loss, dtype=tf.float32)
-                # discriminator_loss = tf.cast(discriminator_loss, dtype=tf.float32)
-
-            # # 将归一化区间从 [-1, 1] 转换到 [0, 255]
-            # hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
-            # gen_img = tf.cast((gen_img + 1) * 127.5, dtype=tf.uint8)
-
-            # # 计算 psnr，ssim
-            # psnr = calculate_psnr(
-            #     hr_img,
-            #     gen_img,
-            #     crop_border=0,
-            #     input_order="HWC",
-            #     test_y_channel=True,
-            # )
-            # ssim = calculate_ssim(
-            #     hr_img,
-            #     gen_img,
-            #     crop_border=0,
-            #     input_order="HWC",
-            #     test_y_channel=True,
-            # )
-            # psnr = tf.reduce_mean(tf.image.psnr(hr_img, gen_img, max_val=1.0))
-            # ssim = tf.reduce_mean(tf.image.ssim(hr_img, gen_img, max_val=1.0))
+                    generator_total_loss)
 
         # 若使用混合精度，将梯度除以损失标度
         if self.use_mixed_float:
             scaled_gen_gradients = gen_tape.gradient(
-                scaled_gen_loss, self.generator.trainable_variables
-            )
+                scaled_gen_loss, self.generator.trainable_variables)
             scaled_dis_gradients = disc_tape.gradient(
-                scaled_disc_loss, self.discriminator.trainable_variables
-            )
+                scaled_disc_loss, self.discriminator.trainable_variables)
             gradients_generator = self.gen_optimizer.get_unscaled_gradients(
-                scaled_gen_gradients
-            )
+                scaled_gen_gradients)
             gradients_discriminator = self.dis_optimizer.get_unscaled_gradients(
-                scaled_dis_gradients
-            )
+                scaled_dis_gradients)
         # 不使用混合精度，直接获取梯度
         else:
             gradients_generator = gen_tape.gradient(
-                generator_total_loss, self.generator.trainable_variables
-            )
+                generator_total_loss, self.generator.trainable_variables)
             gradients_discriminator = disc_tape.gradient(
-                discriminator_loss, self.discriminator.trainable_variables
-            )
+                discriminator_loss, self.discriminator.trainable_variables)
         # 更新优化器参数
         self.gen_optimizer.apply_gradients(
-            zip(gradients_generator, self.generator.trainable_variables)
-        )
+            zip(gradients_generator, self.generator.trainable_variables))
         self.dis_optimizer.apply_gradients(
-            zip(gradients_discriminator, self.discriminator.trainable_variables)
-        )
+            zip(gradients_discriminator,
+                self.discriminator.trainable_variables))
 
         return generator_total_loss, discriminator_loss
 
@@ -582,26 +548,23 @@ class SRGAN:
         预训练
         """
         # 保存历史数据文件夹路径
-        save_history_dir_path = os.path.join(
-            self.result_path, self.model_name, "history", "pretrain"
-        )
+        save_history_dir_path = os.path.join(self.result_path, self.model_name,
+                                             "history", "pretrain")
         # 若保存历史数据文件夹不存在，则创建
         if not os.path.isdir(save_history_dir_path):
             os.makedirs(save_history_dir_path)
 
         # 保存模型文件夹路径
-        save_models_dir_path = os.path.join(
-            self.result_path, self.model_name, "models", "pretrain"
-        )
+        save_models_dir_path = os.path.join(self.result_path, self.model_name,
+                                            "models", "pretrain")
         # 若保存模型文件夹不存在，则创建
         if not os.path.isdir(save_models_dir_path):
             os.makedirs(save_models_dir_path)
 
         epoch_list = tf.constant([])
         loss_list = tf.constant([], dtype=tf.float32)
-        batch_idx_count = tf.constant(
-            len(self.data_loader.train_data), dtype=tf.float32
-        )
+        batch_idx_count = tf.constant(len(self.data_loader.train_data),
+                                      dtype=tf.float32)
         # print("len of train_data):", len(self.data_loader.train_data))
         # print("downsample_mode:", self.downsample_mode)
         config = parse_toml("./config/config.toml")
@@ -610,7 +573,8 @@ class SRGAN:
             loss_batch_total = tf.constant(0, dtype=tf.float32)
             batch_start_time = time.time()
             # 加载训练数据集，并训练
-            for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
+            for batch_idx, (lr_imgs,
+                            hr_imgs) in enumerate(self.data_loader.train_data):
                 # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
                 if self.downsample_mode == "second-order":
                     # start_time = datetime.datetime.now()
@@ -624,7 +588,8 @@ class SRGAN:
                     )
                     # end_time = datetime.datetime.now()
                     # print("second-order time:", end_time - start_time)
-                    lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
+                    lr_imgs, hr_imgs = self.pool_data.get_pool_data(
+                        lr_imgs, hr_imgs)
                 # 单步预训练
                 loss = self.pretrain_step(lr_imgs, hr_imgs)
                 loss_batch_total += loss
@@ -641,8 +606,7 @@ class SRGAN:
                             batch_idx_count,
                             loss,
                             batch_end_time - batch_start_time,
-                        )
-                    )
+                        ))
                     batch_start_time = time.time()
 
             # if self.use_ema:
@@ -650,14 +614,12 @@ class SRGAN:
             # 统计 epoch 和 loss
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             loss_list = tf.concat(
-                [loss_list, [loss_batch_total / batch_idx_count]], axis=0
-            )
+                [loss_list, [loss_batch_total / batch_idx_count]], axis=0)
 
             # 保存历史数据
             if epoch % self.save_history_interval == 0:
-                self.save_pretrain_history(
-                    epoch, save_history_dir_path, epoch_list, loss_list
-                )
+                self.save_pretrain_history(epoch, save_history_dir_path,
+                                           epoch_list, loss_list)
 
             # 保存模型
             if epoch % self.save_models_interval == 0:
@@ -668,25 +630,22 @@ class SRGAN:
         训练模型
         """
         # 保存模型文件夹路径
-        save_models_dir_path = os.path.join(
-            self.result_path, self.model_name, "models", "train"
-        )
+        save_models_dir_path = os.path.join(self.result_path, self.model_name,
+                                            "models", "train")
         # 若保存模型文件夹不存在，则创建
         if not os.path.isdir(save_models_dir_path):
             os.makedirs(save_models_dir_path)
 
         # 保存图片文件夹路径
-        save_images_dir_path = os.path.join(
-            self.result_path, self.model_name, "images", "train"
-        )
+        save_images_dir_path = os.path.join(self.result_path, self.model_name,
+                                            "images", "train")
         # 若保存图片文件夹不存在，则创建
         if not os.path.isdir(save_images_dir_path):
             os.makedirs(save_images_dir_path)
 
         # 保存历史数据文件夹路径
-        save_history_dir_path = os.path.join(
-            self.result_path, self.model_name, "history", "train"
-        )
+        save_history_dir_path = os.path.join(self.result_path, self.model_name,
+                                             "history", "train")
         # 若保存历史数据文件夹不存在，则创建
         if not os.path.isdir(save_history_dir_path):
             os.makedirs(save_history_dir_path)
@@ -698,15 +657,11 @@ class SRGAN:
         # 若初始 epoch 大于 1，则加载模型
         if self.init_epoch > 1:
             self.generator = tf.keras.models.load_model(
-                os.path.join(
-                    save_models_dir_path, "gen_model_epoch_%d" % self.init_epoch
-                )
-            )
+                os.path.join(save_models_dir_path,
+                             "gen_model_epoch_%d" % self.init_epoch))
             self.discriminator = tf.keras.models.load_model(
-                os.path.join(
-                    save_models_dir_path, "dis_model_epoch_%d" % self.init_epoch
-                )
-            )
+                os.path.join(save_models_dir_path,
+                             "dis_model_epoch_%d" % self.init_epoch))
 
         config = parse_toml("./config/config.toml")
         degration_config = config["second-order-degradation"]
@@ -721,16 +676,16 @@ class SRGAN:
             d_loss_batch_total = tf.constant(0, dtype=tf.float32)
             # psnr_batch_total = tf.constant(0, dtype=tf.float32)
             # ssim_batch_total = tf.constant(0, dtype=tf.float32)
-            batch_idx_count = tf.constant(
-                len(self.data_loader.train_data), dtype=tf.float32
-            )
+            batch_idx_count = tf.constant(len(self.data_loader.train_data),
+                                          dtype=tf.float32)
 
             # 修改学习率
             self.scheduler([self.gen_optimizer, self.dis_optimizer], epoch)
 
             batch_start_time = time.time()
             # 加载训练数据集，并训练
-            for batch_idx, (lr_imgs, hr_imgs) in enumerate(self.data_loader.train_data):
+            for batch_idx, (lr_imgs,
+                            hr_imgs) in enumerate(self.data_loader.train_data):
                 # 若为二阶退化模型，需要先对图像进行退化处理，再从数据池中取出数据
                 if self.downsample_mode == "second-order":
                     lr_imgs, hr_imgs = self.data_loader.feed_second_order_data(
@@ -741,7 +696,8 @@ class SRGAN:
                         True,
                         False,
                     )
-                    lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
+                    lr_imgs, hr_imgs = self.pool_data.get_pool_data(
+                        lr_imgs, hr_imgs)
 
                 g_loss, d_loss = self.train_step(lr_imgs, hr_imgs)
 
@@ -767,8 +723,7 @@ class SRGAN:
                             g_loss,
                             d_loss,
                             batch_end_time - batch_start_time,
-                        )
-                    )
+                        ))
                     batch_start_time = time.time()
 
             # 评估模型
@@ -785,11 +740,9 @@ class SRGAN:
 
             epoch_list = tf.concat([epoch_list, [epoch]], axis=0)
             g_loss_list = tf.concat(
-                [g_loss_list, [g_loss_batch_total / batch_idx_count]], axis=0
-            )
+                [g_loss_list, [g_loss_batch_total / batch_idx_count]], axis=0)
             d_loss_list = tf.concat(
-                [d_loss_list, [d_loss_batch_total / batch_idx_count]], axis=0
-            )
+                [d_loss_list, [d_loss_batch_total / batch_idx_count]], axis=0)
             psnr_list = tf.concat([psnr_list, [psnr]], axis=0)
             ssim_list = tf.concat([ssim_list, [ssim]], axis=0)
             niqe_list = tf.concat([niqe_list, [niqe]], axis=0)
@@ -834,10 +787,12 @@ class SRGAN:
         Returns:
             tf.Tensor: 输出张量
         """
-        x = Conv2D(filters=filters, kernel_size=3, strides=1, padding="same")(input)
+        x = Conv2D(filters=filters, kernel_size=3, strides=1,
+                   padding="same")(input)
         x = BatchNormalization(momentum=0.8)(x)
         x = PReLU(shared_axes=[1, 2])(x)
-        x = Conv2D(filters=filters, kernel_size=3, strides=1, padding="same")(x)
+        x = Conv2D(filters=filters, kernel_size=3, strides=1,
+                   padding="same")(x)
         x = BatchNormalization(momentum=0.8)(x)
         x = Add()([x, input])
 
@@ -852,7 +807,8 @@ class SRGAN:
         Returns:
             tf.Tensor: 上采样后的张量
         """
-        x = Conv2D(filters=256, kernel_size=3, strides=1, padding="same")(input)
+        x = Conv2D(filters=256, kernel_size=3, strides=1,
+                   padding="same")(input)
         x = UpSampling2D(size=2)(x)
         x = PReLU(shared_axes=[1, 2])(x)
 
@@ -870,9 +826,10 @@ class SRGAN:
         Returns:
             tf.tenosr: 输出张量
         """
-        x = Conv2D(filters=filters, kernel_size=3, strides=strides, padding="same")(
-            input
-        )
+        x = Conv2D(filters=filters,
+                   kernel_size=3,
+                   strides=strides,
+                   padding="same")(input)
         if bn:
             x = BatchNormalization(momentum=0.8)(x)
         x = LeakyReLU(alpha=0.2)(x)
@@ -887,8 +844,9 @@ class SRGAN:
         hr_generated = self.generator.predict(lr_img)
 
         # 反归一化到 [0, 255]
-        hr_img = tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8)
-        hr_generated = tf.cast((hr_generated + 1) * 127.5, dtype=tf.uint8)
+        hr_img = tf.cast(tf.math.round(hr_img * 255.0), dtype=tf.uint8)
+        hr_generated = tf.cast(tf.math.round(hr_generated * 255.0),
+                               dtype=tf.uint8)
 
         # 计算 PSNR，SSIM 和 NIQE
         psnr = cal_psnr_tf(hr_img, hr_generated)
@@ -897,11 +855,16 @@ class SRGAN:
 
         return psnr, ssim, niqe
 
-    def evaluate(self, epoch, lr_img_dir="", hr_img_dir="", dataset_name="Custom"):
+    def evaluate(self,
+                 epoch,
+                 lr_img_dir="",
+                 hr_img_dir="",
+                 dataset_name="Custom"):
         """
         评估模型，默认在 DIV2K 测试集上进行评估，若要在其他测试集合上评估，需指定 lr_img_dir 和 hr_img_dir 路径
         """
-        test_data_len = tf.constant(len(self.data_loader.test_data), dtype=tf.float32)
+        test_data_len = tf.constant(len(self.data_loader.test_data),
+                                    dtype=tf.float32)
         psnr_total = tf.constant(0, dtype=tf.float32)
         ssim_total = tf.constant(0, dtype=tf.float32)
         niqe_total = tf.constant(0, dtype=tf.float32)
@@ -925,8 +888,7 @@ class SRGAN:
                     psnr_total / test_data_len,
                     ssim_total / test_data_len,
                     niqe_total / test_data_len,
-                )
-            )
+                ))
 
             return (
                 psnr_total / test_data_len,
@@ -934,16 +896,18 @@ class SRGAN:
                 niqe_total / test_data_len,
             )
         if lr_img_dir != "" and hr_img_dir != "":
-            lr_img_path_list = sorted(glob(os.path.join(lr_img_dir, "*[.png]")))
-            hr_img_path_list = sorted(glob(os.path.join(hr_img_dir, "*[.png]")))
+            lr_img_path_list = sorted(glob(os.path.join(lr_img_dir,
+                                                        "*[.png]")))
+            hr_img_path_list = sorted(glob(os.path.join(hr_img_dir,
+                                                        "*[.png]")))
             assert len(lr_img_path_list) == len(
                 hr_img_path_list
             ), "The length of lr_img_path_list and hr_img_path_list must be same!"
-            test_data_len = tf.constant(len(lr_img_path_list), dtype=tf.float32)
+            test_data_len = tf.constant(len(lr_img_path_list),
+                                        dtype=tf.float32)
 
-            for (lr_img_path, hr_img_path) in list(
-                zip(lr_img_path_list, hr_img_path_list)
-            ):
+            for (lr_img_path,
+                 hr_img_path) in list(zip(lr_img_path_list, hr_img_path_list)):
                 # 读取图片（opencv）
                 lr_img = cv.imread(lr_img_path)
                 hr_img = cv.imread(hr_img_path)
@@ -956,9 +920,9 @@ class SRGAN:
                 lr_img = tf.convert_to_tensor(lr_img, dtype=tf.uint8)
                 hr_img = tf.convert_to_tensor(hr_img, dtype=tf.uint8)
 
-                # 归一化到 [-1, 1]
-                lr_img = tf.cast(lr_img, tf.float32) / 127.5 - 1
-                hr_img = tf.cast(hr_img, tf.float32) / 127.5 - 1
+                # 归一化到 [0, 1]
+                lr_img = tf.cast(lr_img, tf.float32) / 255.0
+                hr_img = tf.cast(hr_img, tf.float32) / 255.0
 
                 # 升维
                 lr_img = tf.expand_dims(lr_img, axis=0)
@@ -982,8 +946,7 @@ class SRGAN:
                     psnr_total / test_data_len,
                     ssim_total / test_data_len,
                     niqe_total / test_data_len,
-                )
-            )
+                ))
 
             return (
                 psnr_total / test_data_len,
@@ -993,9 +956,8 @@ class SRGAN:
         else:
             raise ValueError("The lr_img_dir or hr_img_dir can not be empty!")
 
-    def save_pretrain_history(
-        self, epoch, save_history_dir_path, epoch_list, loss_list
-    ):
+    def save_pretrain_history(self, epoch, save_history_dir_path, epoch_list,
+                              loss_list):
         """
         保存预训练历史数据
         """
@@ -1004,18 +966,19 @@ class SRGAN:
         # 绘制损失曲线
         ax = plt.subplot(1, 1, 1)
         ax.set_title("Pretrain Loss")
-        (line,) = ax.plot(
-            epoch_list, loss_list, color="deepskyblue", marker=".", label="loss"
-        )
+        (line, ) = ax.plot(epoch_list,
+                           loss_list,
+                           color="deepskyblue",
+                           marker=".",
+                           label="loss")
         ax.set_xlabel("epoch")
         ax.set_ylabel("Loss")
         ax.legend(handles=[line], loc="upper right")
 
         fig.tight_layout()
         fig.savefig(
-            os.path.join(
-                save_history_dir_path, "pretrain_history_epoch_%d.png" % epoch
-            ),
+            os.path.join(save_history_dir_path,
+                         "pretrain_history_epoch_%d.png" % epoch),
             dpi=300,
             bbox_inches="tight",
         )
@@ -1041,12 +1004,16 @@ class SRGAN:
         # 绘制损失曲线
         ax_1 = plt.subplot(2, 2, 1)
         ax_1.set_title("Train Loss")
-        (line_1,) = ax_1.plot(
-            epoch_list, g_loss_list, color="deepskyblue", marker=".", label="g_loss"
-        )
-        (line_2,) = ax_1.plot(
-            epoch_list, d_loss_list, color="darksalmon", marker=".", label="d_loss"
-        )
+        (line_1, ) = ax_1.plot(epoch_list,
+                               g_loss_list,
+                               color="deepskyblue",
+                               marker=".",
+                               label="g_loss")
+        (line_2, ) = ax_1.plot(epoch_list,
+                               d_loss_list,
+                               color="darksalmon",
+                               marker=".",
+                               label="d_loss")
         ax_1.set_xlabel("epoch")
         ax_1.set_ylabel("Loss")
         ax_1.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -1055,7 +1022,11 @@ class SRGAN:
         # 绘制 PSNR 曲线
         ax_2 = plt.subplot(2, 2, 2)
         ax_2.set_title("PSNR")
-        ax_2.plot(epoch_list, psnr_list, color="orange", marker=".", label="PSNR")
+        ax_2.plot(epoch_list,
+                  psnr_list,
+                  color="orange",
+                  marker=".",
+                  label="PSNR")
         ax_2.set_xlabel("epoch")
         ax_2.set_ylabel("PSNR(dB)")
         ax_2.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -1063,7 +1034,11 @@ class SRGAN:
         # 绘制 SSIM 曲线
         ax_3 = plt.subplot(2, 2, 3)
         ax_3.set_title("SSIM")
-        ax_3.plot(epoch_list, ssim_list, color="salmon", marker=".", label="SSIM")
+        ax_3.plot(epoch_list,
+                  ssim_list,
+                  color="salmon",
+                  marker=".",
+                  label="SSIM")
         ax_3.set_xlabel("epoch")
         ax_3.set_ylabel("SSIM")
         ax_3.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -1071,14 +1046,19 @@ class SRGAN:
         # 绘制 NIQE 曲线
         ax_4 = plt.subplot(2, 2, 4)
         ax_4.set_title("NIQE")
-        ax_4.plot(epoch_list, niqe_list, color="purple", marker=".", label="NIQE")
+        ax_4.plot(epoch_list,
+                  niqe_list,
+                  color="purple",
+                  marker=".",
+                  label="NIQE")
         ax_4.set_xlabel("epoch")
         ax_4.set_ylabel("NIQE")
         ax_4.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         fig.tight_layout()
         fig.savefig(
-            os.path.join(save_history_dir_path, "train_history_epoch_%d.png" % epoch),
+            os.path.join(save_history_dir_path,
+                         "train_history_epoch_%d.png" % epoch),
             dpi=300,
             bbox_inches="tight",
         )
@@ -1103,9 +1083,9 @@ class SRGAN:
 
             # 反归一化
             lr_img, hr_img, sr_img = (
-                tf.cast((lr_img + 1) * 127.5, dtype=tf.uint8),
-                tf.cast((hr_img + 1) * 127.5, dtype=tf.uint8),
-                tf.cast((sr_img + 1) * 127.5, dtype=tf.uint8),
+                tf.cast(tf.math.round(lr_img * 255.0), dtype=tf.uint8),
+                tf.cast(tf.math.round(hr_img * 255.0), dtype=tf.uint8),
+                tf.cast(tf.math.round(sr_img * 255.0), dtype=tf.uint8),
             )
 
             axs[i, 0].imshow(lr_img)
@@ -1146,7 +1126,8 @@ class SRGAN:
 
         # 保存生成器权重
         self.generator.save_weights(
-            os.path.join(save_models_dir_path, "gen_weights_epoch_%d.ckpt" % epoch),
+            os.path.join(save_models_dir_path,
+                         "gen_weights_epoch_%d.ckpt" % epoch),
             save_format="tf",
         )
 
@@ -1179,12 +1160,13 @@ class SRGAN:
         """
         内容损失
         """
+
         # 反归一化 vgg 输入
         def preprocess_vgg(x):
             if isinstance(x, np.ndarray):
-                return preprocess_input((x + 1) * 127.5)
+                return preprocess_input(x * 255.0)
             else:
-                return Lambda(lambda x: preprocess_input((x + 1) * 127.5))(x)
+                return Lambda(lambda x: preprocess_input(x * 255.0))(x)
 
         hr_generated = preprocess_vgg(hr_generated)
         hr_img = preprocess_vgg(hr_img)

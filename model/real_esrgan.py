@@ -217,9 +217,9 @@ class RealESRGAN(ESRGAN):
         # 反归一化 vgg 输入
         def preprocess_vgg(x):
             if isinstance(x, np.ndarray):
-                return preprocess_input((x + 1) * 127.5)
+                return preprocess_input(x * 255.0)
             else:
-                return Lambda(lambda x: preprocess_input((x + 1) * 127.5))(x)
+                return Lambda(lambda x: preprocess_input(x * 255.0))(x)
 
         hr_generated = preprocess_vgg(hr_generated)
         hr_img = preprocess_vgg(hr_img)

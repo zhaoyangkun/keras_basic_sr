@@ -296,9 +296,9 @@ class DataLoader:
             # 将 numpy 数据转换为 tensor
             lr_img = tf.convert_to_tensor(lr_img, dtype=tf.uint8)
 
-            # 归一化到 [-1, 1]
-            hr_img = tf.cast(hr_img, tf.float32) / 127.5 - 1
-            lr_img = tf.cast(lr_img, tf.float32) / 127.5 - 1
+            # 归一化到 [0, 1]
+            hr_img = tf.cast(hr_img, tf.float32) / 255.0
+            lr_img = tf.cast(lr_img, tf.float32) / 255.0
         elif mode == "train" and self.downsample_mode == "second-order":
             # 归一化到 [0, 1]
             hr_img = tf.image.convert_image_dtype(hr_img, tf.float32)
@@ -620,12 +620,6 @@ class DataLoader:
         if is_center_crop:
             hr_img, lr_img = self.center_crop(hr_img, lr_img, crop_img_height,
                                               crop_img_width)
-
-        # 将归一化区间从 [0, 1] 调整到 [-1, 1]
-        hr_img = tf.clip_by_value(tf.math.round(hr_img * 255), 0,
-                                  255) / 127.5 - 1
-        lr_img = tf.clip_by_value(tf.math.round(lr_img * 255), 0,
-                                  255) / 127.5 - 1
 
         return lr_img, hr_img
 
