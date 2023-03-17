@@ -45,7 +45,7 @@ is_count = false                    # 是否进行统计
 
 # 模型
 [model]
-model_name = "srcnn" # 模型名称（"srcnn"、"vdsr"、"srgan"、"esrgan"、"real-esrgan"、"ha-esrgan"）
+model_name = "ha-esrgan" # 模型名称（"srcnn"、"vdsr"、"srgan"、"esrgan"、"real-esrgan"、"ha-esrgan"）
 mode = "train"       # 训练模式（"pretrain"、"train"）
 
 # SRCNN

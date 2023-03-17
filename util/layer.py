@@ -6,7 +6,7 @@ from tensorflow.keras.layers import (Activation, Add, AvgPool2D,
                                      Dense, GlobalAveragePooling2D,
                                      GlobalMaxPooling2D, Input, Lambda,
                                      LeakyReLU, MaxPooling2D, Multiply, PReLU,
-                                     ReLU, Reshape, UpSampling2D)
+                                     ReLU, Reshape, UpSampling2D, Layer)
 from tensorflow_addons.layers import SpectralNormalization
 
 
@@ -393,11 +393,11 @@ def channel_attention(input, ratio=8):
     # (batch, 1, 1, channels)
 
     feature = Add()([max_pool, avg_pool])  # (batch, 1, 1, channels)
-    feature = Activation("sigmoid")(feature)  # (batch, 1, 1, 1)
+    feature = Activation("sigmoid")(feature)  # (batch, 1, 1, channels)
 
-    x = Multiply()([input, feature])  # (batch, height, width, channels)
+    # x = Multiply()([input, feature])  # (batch, height, width, channels)
 
-    return x
+    return feature
 
 
 # 坐标注意力
@@ -496,16 +496,45 @@ def spatial_attention(input, in_channels=64, out_channels=32):
 
 
 # 构建 MHARB
-def MHARB(input, in_channels=64, out_channels=32):
+def MHARB(input, in_channels=64, out_channels=32, structure="serial"):
+    # 跳跃连接
     shortcut = Conv2D(out_channels, 3, strides=1, padding="same")(input)
 
-    # 利用空间注意力模块来提取空间信息
-    x = spatial_attention(input,
-                          in_channels=in_channels,
-                          out_channels=out_channels)  # (b, h, w, out_channels)
+    # # 自注意力
+    # self_feature = SelfAttention(in_dims=in_channels)(input)
+    # self_feature = Conv2D(out_channels, 3, strides=1,
+    #                       padding="same")(self_feature)
 
-    # 利用通道注意力模块中提取通道信息
-    x = channel_attention(x)  # (b, h, w, out_channels)
+    if structure == "serial":  # 串联
+        # 利用空间注意力模块来提取空间信息
+        spatial_feature = spatial_attention(
+            input, in_channels=in_channels,
+            out_channels=out_channels)  # (b, h, w, out_channels)
+
+        # 利用通道注意力模块中提取通道信息
+        channel_feature = channel_attention(
+            spatial_feature)  # (b, 1, 1, out_channels)
+
+        # 将空间信息和通道信息相乘
+        x = Multiply()([spatial_feature,
+                        channel_feature])  # (b, h, w, out_channels)
+    elif structure == "parallel":  # 并联
+        # 利用空间注意力模块来提取空间信息
+        spatial_feature = spatial_attention(
+            input, in_channels=in_channels,
+            out_channels=in_channels)  # (b, h, w, in_channels)
+
+        # 利用通道注意力模块中提取通道信息
+        channel_feature = channel_attention(input)  # (b, 1, 1, in_channels)
+
+        # 将空间信息和通道信息相乘
+        x = Multiply()([spatial_feature,
+                        channel_feature])  # (b, h, w, in_channels)
+
+        # 调整通道维度
+        x = Conv2D(out_channels, 3, strides=1, padding="same")(x)
+    else:
+        raise ValueError("Structure must be 'serial' or 'parallel'!")
 
     output = Add()([x, shortcut])
 
@@ -663,6 +692,52 @@ class EMA:
                 assert param.name in self.backup
                 param.assign(self.backup[param.name])
         self.backup = {}
+
+
+class SelfAttention(Model):
+    """
+    自注意力
+    """
+
+    def __init__(self, in_dims, **kwargs):
+        super(SelfAttention, self).__init__(**kwargs)
+        self.in_channels = in_dims
+        self.query_conv = Conv2D(in_dims // 8, 1)
+        self.key_conv = Conv2D(in_dims // 8, 1)
+        self.value_conv = Conv2D(in_dims, 1)
+
+    def build(self, input_shape):
+        self.gamma = self.add_weight(self.name + "_gamma",
+                                     shape=(),
+                                     initializer=tf.initializers.zeros)
+
+    def call(self, inputs):
+        batch_size, height, width, channels = inputs.shape
+
+        proj_query = self.query_conv(inputs)  # [b, h, w, in_dims // 8]
+        proj_query = tf.reshape(
+            proj_query,
+            (batch_size, width * height, -1))  # [b, h*w, in_dims // 8]
+
+        proj_key = self.key_conv(inputs)  # [b, h, w, in_dims // 8]
+        proj_key = tf.transpose(tf.reshape(proj_key,
+                                           (batch_size, width * height, -1)),
+                                perm=[0, 2, 1])  # [b, in_dims // 8, h*w]
+
+        energy = tf.matmul(proj_query, proj_key)  # [b, h*w, h*w]
+        attention = tf.nn.softmax(energy)  # [b, h*w, h*w]
+
+        proj_value = self.value_conv(inputs)  # [b, h, w, in_dims]
+        proj_value = tf.transpose(tf.reshape(proj_value,
+                                             (batch_size, width * height, -1)),
+                                  perm=[0, 2, 1])  # [b, in_dims, h*w]
+
+        out = tf.matmul(proj_value, attention)  # [b, in_dims, h*w]
+        out = tf.reshape(
+            tf.transpose(out, perm=[0, 2, 1]),
+            (batch_size, height, width, channels))  # [b, h, w, in_dims]
+
+        return tf.add(tf.multiply(self.gamma, out), inputs)
 
 
 # # 谱归一化层
