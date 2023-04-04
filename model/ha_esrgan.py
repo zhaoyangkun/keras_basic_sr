@@ -6,7 +6,6 @@ from util.layer import MHARG, upsample_mharb
 
 
 class HA_ESRGAN(RealESRGAN):
-
     def __init__(
         self,
         model_name,
@@ -94,9 +93,9 @@ class HA_ESRGAN(RealESRGAN):
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:
-                x = upsample_mharb(x, i + 1, method="subpixel", channels=64)
-            else:
                 x = upsample_mharb(x, i + 1, method="bilinear", channels=64)
+            else:
+                x = upsample_mharb(x, i + 1, method="subpixel", channels=64)
 
         x = Conv2D(
             64,
