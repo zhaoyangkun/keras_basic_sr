@@ -8,10 +8,10 @@ downsample_mode = "bicubic" # 下采样方式（"bicubic"、"second-order"）
 train_resource_path = "F:\\数据集\\DIV2K\\DIV2K_train_HR" # 训练图片资源路径
 test_resource_path = "F:\\数据集\\DIV2K\\DIV2K_valid_HR"  # 测试图片资源路径
 scale_factor = 2                                       # 下采样倍数
-train_hr_img_height = 256                              # 训练过程中原图高度
-train_hr_img_width = 256                               # 训练过程中原图宽度
-valid_hr_img_height = 256                              # 验证过程中原图高度
-valid_hr_img_width = 256                               # 验证过程中原图宽度
+train_hr_img_height = 128                              # 训练过程中原图高度
+train_hr_img_width = 128                               # 训练过程中原图宽度
+valid_hr_img_height = 128                              # 验证过程中原图高度
+valid_hr_img_width = 128                               # 验证过程中原图宽度
 max_workers = 4                                        # 处理图片的最大线程数
 data_enhancement_factor = 1                            # 数据增强因子
 
@@ -25,35 +25,35 @@ dataset_name = "DIV2K" # 数据集名称
 is_count = true        # 是否进行统计，只能设置一个数据集进行统计
 
 [evaluate_dataset.set5]
-lr_img_dir = "./image/set5/LRbicx4" # 低分辨率图像文件夹路径
+lr_img_dir = "./image/set5/LRbicx2" # 低分辨率图像文件夹路径
 hr_img_dir = "./image/set5/GTmod12" # 原图文件夹路径
 dataset_name = "Set5"               # 数据集名称
 is_count = false                    # 是否进行统计
 
-# [evaluate_dataset.set14]
-# lr_img_dir = "./image/set14/LRbicx4" # 低分辨率图像文件夹路径
-# hr_img_dir = "./image/set14/GTmod12" # 原图文件夹路径
-# dataset_name = "Set14"               # 数据集名称
-# is_count = false                     # 是否进行统计
+[evaluate_dataset.set14]
+lr_img_dir = "./image/set14/LRbicx2" # 低分辨率图像文件夹路径
+hr_img_dir = "./image/set14/GTmod12" # 原图文件夹路径
+dataset_name = "Set14"               # 数据集名称
+is_count = false                     # 是否进行统计
 
-# [evaluate_dataset.RealSRSet]
-# lr_img_dir = "./image/RealSRSet"   # 低分辨率图像文件夹路径
-# hr_img_dir = "./image/RealSR_JPEG" # 原图文件夹路径
-# dataset_name = "RealSRSet"         # 数据集名称
-# is_count = false                   # 是否进行统计
+[evaluate_dataset.RealSRSet]
+lr_img_dir = "./image/RealSR_JPEG/LRbicx2" # 低分辨率图像文件夹路径
+hr_img_dir = "./image/RealSR_JPEG/GTmod12" # 原图文件夹路径
+dataset_name = "RealSRSet"                 # 数据集名称
+is_count = false                           # 是否进行统计
 
 
 # 模型
 [model]
-model_name = "esrgan" # 模型名称（"srcnn"、"vdsr"、"srgan"、"esrgan"、"real-esrgan"、"ha-esrgan"）
-mode = "train"        # 训练模式（"pretrain"、"train"）
+model_name = "srcnn" # 模型名称（"srcnn"、"vdsr"、"srgan"、"esrgan"、"real-esrgan"、"ha-esrgan"）
+mode = "train"       # 训练模式（"pretrain"、"train"）
 
 # SRCNN
 [model.srcnn]
 result_path = "./result"  # 结果保存路径
 epochs = 100              # 训练总轮数
 init_epoch = 1            # 初始训练轮数
-batch_size = 4            # 单次训练样本数
+batch_size = 8            # 单次训练样本数
 rdb_num = 16              # 残差块数目
 log_interval = 20         # 打印日志间隔
 save_images_interval = 1  # 保存图片间隔

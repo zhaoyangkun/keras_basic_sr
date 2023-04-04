@@ -17,7 +17,7 @@ from util.data_util import (
     random_add_poisson_noise,
     resize,
 )
-from util.generate import normalize
+from util.data_util import normalize
 
 
 class DataLoader:

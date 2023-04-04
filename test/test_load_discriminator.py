@@ -5,7 +5,7 @@ import tensorflow as tf
 
 sys.path.append("./")
 
-from util.generate import denormalize, load_model, read_and_process_image
+from util.data_util import denormalize, load_model, read_and_process_image
 
 discriminator = load_model(
     "F:/研究生资料/超分模型结果/ha-esrgan/models/train/dis_model_epoch_100")

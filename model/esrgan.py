@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
-from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import (
     Activation,
     Add,
@@ -11,13 +10,12 @@ from tensorflow.keras.layers import (
     Dropout,
     GlobalAveragePooling2D,
     Input,
-    Lambda,
     LeakyReLU,
 )
 from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from util.generate import denormalize
+from util.data_util import denormalize
 from util.layer import RRDB, create_vgg_19_features_model, upsample
 
 from model.srgan import SRGAN

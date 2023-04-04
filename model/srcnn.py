@@ -8,14 +8,14 @@ import tensorflow as tf
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
 from tensorflow.keras import mixed_precision
-from tensorflow.keras.layers import Conv2D, Input
+from tensorflow.keras.layers import Conv2D, Input, LeakyReLU
 from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 
 from util.data_loader import DataLoader, PoolData
 from util.data_util import resize
-from util.generate import denormalize, normalize
+from util.data_util import denormalize, normalize
 from util.logger import create_logger
 from util.metric import cal_niqe_tf, cal_psnr_tf, cal_ssim_tf
 from util.toml import parse_toml
@@ -140,7 +140,6 @@ class SRCNN:
         inputs = Input(shape=[None, None, 3])
 
         x = Conv2D(filters=64, kernel_size=9, padding="same", activation="relu")(inputs)
-
         x = Conv2D(filters=32, kernel_size=1, padding="same", activation="relu")(x)
 
         outputs = Conv2D(filters=3, kernel_size=5, padding="same", dtype="float32")(x)
@@ -242,7 +241,7 @@ class SRCNN:
                     )
                     lr_imgs, hr_imgs = self.pool_data.get_pool_data(lr_imgs, hr_imgs)
 
-                # 由于 VDSR 模型中没有上采样层，因此需要利用 bicubic 算法对低分辨率图像进行上采样，
+                # 由于 SRCNN 模型中没有上采样层，因此需要利用 bicubic 算法对低分辨率图像进行上采样，
                 # 以保证低分辨率图像尺寸和原图尺寸一致
                 lr_imgs = resize(
                     lr_imgs,
@@ -250,6 +249,7 @@ class SRCNN:
                     self.train_hr_img_height,
                     3,
                     "bicubic",
+                    normalized_interval=(-1, 1),
                 )
 
                 # 单步训练
@@ -365,6 +365,7 @@ class SRCNN:
                     self.train_hr_img_height,
                     3,
                     "bicubic",
+                    normalized_interval=(-1, 1),
                 )
 
                 # 单步验证
@@ -423,6 +424,7 @@ class SRCNN:
                     hr_img.shape[0],
                     3,
                     "bicubic",
+                    normalized_interval=(-1, 1),
                 )
 
                 # 归一化到 [-1, 1]
@@ -546,12 +548,10 @@ class SRCNN:
             )
 
             # 利用生成器生成图片
-            # lr_img = tf.expand_dims(lr_img, axis=0)
             lr_img_large = tf.expand_dims(lr_img_large, axis=0)
             sr_img = self.generator(lr_img_large, training=False)
             sr_img = tf.squeeze(sr_img, axis=0)
             lr_img_large = tf.squeeze(lr_img_large, axis=0)
-            # lr_img = tf.squeeze(lr_img, axis=0)
 
             # 反归一化
             lr_img, lr_img_large, hr_img, sr_img = (

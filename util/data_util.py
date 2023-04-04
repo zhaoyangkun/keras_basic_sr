@@ -6,8 +6,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
 
-from util.generate import denormalize, normalize
-
 final_sinc_prob = 0.8
 
 kernel_props_1 = {
@@ -560,6 +558,51 @@ def generate_sinc_kernel(sinc_prob):
         sinc_kernel = pulse
 
     return sinc_kernel
+
+
+def normalize(image, normalized_interval=(-1, 1)):
+    """归一化
+
+    Args:
+        image (Tensor): 图像
+
+    Returns:
+        Tensor: 归一化后的图像
+    """
+    # 校验数值类型
+    assert normalized_interval == (-1, 1) or normalized_interval == (
+        0,
+        1,
+    ), "normalized_interval must be (-1, 1) or (0, 1)"
+
+    if image.dtype == tf.uint8:
+        image = tf.cast(image, tf.float32)
+    if normalized_interval == (-1, 1):
+        image = image / 127.5 - 1  # 归一化到 [-1, 1]
+    elif normalized_interval == (0, 1):
+        image = image / 255.0  # 归一化到 [0, 1]
+    return image
+
+
+def denormalize(image, normalized_interval=(-1, 1)):
+    """反归一化
+
+    Args:
+        image (Tensor): 图像
+
+    Returns:
+        Tensor: 归一化后的图像
+    """
+    # 校验数值类型
+    assert normalized_interval == (-1, 1) or normalized_interval == (
+        0,
+        1,
+    ), "normalized_interval must be (-1, 1) or (0, 1)"
+
+    if normalized_interval == (-1, 1):
+        return tf.cast((image + 1) * 127.5, dtype=tf.uint8)
+    elif normalized_interval == (0, 1):
+        return tf.cast(image * 255.0, dtype=tf.uint8)
 
 
 def resize(

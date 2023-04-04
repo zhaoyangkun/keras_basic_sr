@@ -19,7 +19,6 @@ from tensorflow.keras.layers import (
     Dense,
     Flatten,
     Input,
-    Lambda,
     LeakyReLU,
     PReLU,
     UpSampling2D,
@@ -33,7 +32,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 
 from util.data_loader import DataLoader, PoolData
-from util.generate import denormalize, normalize
+from util.data_util import denormalize, normalize
 from util.layer import create_vgg_19_features_model
 from util.logger import create_logger
 from util.metric import cal_niqe_tf, cal_psnr_tf, cal_ssim_tf

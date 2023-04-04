@@ -1,9 +1,12 @@
+import sys
+
 import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
 
-from util.data_util import resize
+sys.path.append("./")
+from util.data_util import denormalize, normalize, resize
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -22,51 +25,6 @@ def read_and_process_image(img_path, normalized_interval=(-1, 1)):
     image = tf.cast(image, dtype=tf.float32)
     image = normalize(image, normalized_interval)
     return image
-
-
-def normalize(image, normalized_interval=(-1, 1)):
-    """归一化
-
-    Args:
-        image (Tensor): 图像
-
-    Returns:
-        Tensor: 归一化后的图像
-    """
-    # 校验数值类型
-    assert normalized_interval == (-1, 1) or normalized_interval == (
-        0,
-        1,
-    ), "normalized_interval must be (-1, 1) or (0, 1)"
-
-    if image.dtype == tf.uint8:
-        image = tf.cast(image, tf.float32)
-    if normalized_interval == (-1, 1):
-        image / 127.5 - 1  # 归一化到 [-1, 1]
-    elif normalized_interval == (0, 1):
-        image = image / 255.0  # 归一化到 [0, 1]
-    return image
-
-
-def denormalize(image, normalized_interval=(-1, 1)):
-    """反归一化
-
-    Args:
-        image (Tensor): 图像
-
-    Returns:
-        Tensor: 归一化后的图像
-    """
-    # 校验数值类型
-    assert normalized_interval == (-1, 1) or normalized_interval == (
-        0,
-        1,
-    ), "normalized_interval must be (-1, 1) or (0, 1)"
-    
-    if normalized_interval == (-1, 1):
-        return tf.cast((image + 1) * 127.5, dtype=tf.uint8)
-    elif normalized_interval == (0, 1):
-        return tf.cast(image * 255.0, dtype=tf.uint8)
 
 
 def generate_different_interpolation_img(img_path_list, scale_factor, save_path):

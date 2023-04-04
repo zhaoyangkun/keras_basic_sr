@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import Add, Input, Lambda, LeakyReLU, UpSampling2D, Conv2D
 from tensorflow.keras.models import Model
-from util.generate import denormalize
+from util.data_util import denormalize
 from util.layer import create_vgg_19_features_model, spectral_norm_conv2d
 
 from model.esrgan import ESRGAN
