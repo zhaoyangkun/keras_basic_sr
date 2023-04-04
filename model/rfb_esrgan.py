@@ -93,9 +93,9 @@ class RS_ESRGAN(ESRGAN):
         for i in range(self.scale_factor // 2):
             # 每次上采样，图像尺寸变为原来的两倍
             if (i + 1) % 2 == 0:
-                x = upsample_rfb(x, i + 1, method="subpixel", channels=64)
-            else:
                 x = upsample_rfb(x, i + 1, method="nearest", channels=64)
+            else:
+                x = upsample_rfb(x, i + 1, method="subpixel", channels=64)
 
         x = Conv2D(
             64,

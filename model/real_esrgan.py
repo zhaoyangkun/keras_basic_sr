@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.applications.vgg19 import preprocess_input
 from tensorflow.keras.layers import Add, Input, Lambda, LeakyReLU, UpSampling2D, Conv2D
 from tensorflow.keras.models import Model
+from util.generate import denormalize
 from util.layer import create_vgg_19_features_model, spectral_norm_conv2d
 
 from model.esrgan import ESRGAN
@@ -214,15 +215,9 @@ class RealESRGAN(ESRGAN):
         """
         内容损失
         """
-        # 反归一化 vgg 输入
-        def preprocess_vgg(x):
-            if isinstance(x, np.ndarray):
-                return preprocess_input(x * 255.0)
-            else:
-                return Lambda(lambda x: preprocess_input(x * 255.0))(x)
-
-        hr_generated = preprocess_vgg(hr_generated)
-        hr_img = preprocess_vgg(hr_img)
+        # 反归一化
+        hr_generated = denormalize(hr_generated, (-1, 1))
+        hr_img = denormalize(hr_img, (-1, 1))
 
         # 计算 vgg 特征
         hr_generated_features = self.vgg(hr_generated)

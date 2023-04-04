@@ -17,6 +17,7 @@ from util.data_util import (
     random_add_poisson_noise,
     resize,
 )
+from util.generate import normalize
 
 
 class DataLoader:
@@ -61,17 +62,19 @@ class DataLoader:
         构建数据集
         """
         print(
-            "\n", "**********" * 2 + " start creating train dataset " +
-            "**********" * 2)
+            "\n", "**********" * 2 + " start creating train dataset " + "**********" * 2
+        )
         # 获取所有训练图片路径
         ori_train_resource_path_list = sorted(
-            glob(os.path.join(self.train_resource_path, "*[.png]")))
+            glob(os.path.join(self.train_resource_path, "*[.png]"))
+        )
         train_resource_path_list = []
         # 数据增强
         for _ in range(self.data_enhancement_factor):
             train_resource_path_list += ori_train_resource_path_list
         assert self.batch_size <= len(
-            train_resource_path_list), "batch_size must be <= train_data_num"
+            train_resource_path_list
+        ), "batch_size must be <= train_data_num"
         # 处理图片
         train_lr_img_list, train_hr_img_list = self.process_img_data(
             train_resource_path_list,
@@ -80,9 +83,8 @@ class DataLoader:
         )
         # 构建训练数据集
         self.train_data = (
-            tf.data.Dataset.from_tensor_slices(
-                (train_lr_img_list,
-                 train_hr_img_list)).shuffle(len(train_lr_img_list))  # 打乱数据
+            tf.data.Dataset.from_tensor_slices((train_lr_img_list, train_hr_img_list))
+            .shuffle(len(train_lr_img_list))  # 打乱数据
             .batch(self.batch_size)  # 批次大小
             .prefetch(tf.data.experimental.AUTOTUNE)  # 预存数据来提升性能
         )
@@ -101,13 +103,15 @@ class DataLoader:
         # )
 
         print(
-            "\n", "**********" * 2 + " start creating test dataset " +
-            "**********" * 2)
+            "\n", "**********" * 2 + " start creating test dataset " + "**********" * 2
+        )
         # 获取所有测试图片路径
         test_resource_path_list = sorted(
-            glob(os.path.join(self.test_resource_path, "*[.png]")))
+            glob(os.path.join(self.test_resource_path, "*[.png]"))
+        )
         assert self.batch_size <= len(
-            test_resource_path_list), "batch_size must be <= test_data_num"
+            test_resource_path_list
+        ), "batch_size must be <= test_data_num"
         # 处理图片
         test_lr_img_list, test_hr_img_list = self.process_img_data(
             test_resource_path_list,
@@ -120,9 +124,11 @@ class DataLoader:
             mode="test",
         )
         # 构建测试数据集
-        self.test_data = (tf.data.Dataset.from_tensor_slices(
-            (test_lr_img_list, test_hr_img_list)).batch(
-                self.batch_size).prefetch(tf.data.experimental.AUTOTUNE))
+        self.test_data = (
+            tf.data.Dataset.from_tensor_slices((test_lr_img_list, test_hr_img_list))
+            .batch(self.batch_size)
+            .prefetch(tf.data.experimental.AUTOTUNE)
+        )
         # self.test_data = (
         #     tf.data.Dataset.from_tensor_slices((test_resource_path_list))
         #     .map(
@@ -156,8 +162,7 @@ class DataLoader:
         """
         处理图片数据
         """
-        if (mode == "train"
-                and self.downsample_mode == "bicubic") or (mode == "test"):
+        if (mode == "train" and self.downsample_mode == "bicubic") or (mode == "test"):
             # 下采样图片列表
             lr_img_list = tf.constant(
                 0,
@@ -195,8 +200,8 @@ class DataLoader:
         pbar = tqdm(total=len(resource_path_list))  # 创建进度条
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             for (lr_img, hr_img) in pool.map(
-                    self.process_img_data_worker,
-                    resource_path_list,
+                self.process_img_data_worker,
+                resource_path_list,
                 [hr_img_height] * len(resource_path_list),
                 [hr_img_width] * len(resource_path_list),
                 [is_random_flip] * len(resource_path_list),
@@ -251,19 +256,16 @@ class DataLoader:
         # 读取图片（opencv）
         # hr_img = cv.imread(img_path)
         # 使用 numpy 读取图片，再利用 opencv 进行解码，避免 windows 系统下中文路径读取失败的问题
-        hr_img = cv.imdecode(np.fromfile(img_path, dtype=np.uint8),
-                             cv.IMREAD_COLOR)
+        hr_img = cv.imdecode(np.fromfile(img_path, dtype=np.uint8), cv.IMREAD_COLOR)
         # 将图片从 BGR 格式转换为 RGB 格式
         hr_img = cv.cvtColor(hr_img, cv.COLOR_BGR2RGB)
         # np.unit8 --> tf.uint8
         hr_img = tf.convert_to_tensor(hr_img, dtype=tf.uint8)
 
-        if (mode == "train"
-                and self.downsample_mode == "bicubic") or (mode == "test"):
+        if (mode == "train" and self.downsample_mode == "bicubic") or (mode == "test"):
             # 随机剪裁
             if is_random_crop:
-                hr_img = tf.image.random_crop(hr_img,
-                                              [hr_img_height, hr_img_width, 3])
+                hr_img = tf.image.random_crop(hr_img, [hr_img_height, hr_img_width, 3])
 
             # 中心裁剪
             height, width = hr_img.shape[0], hr_img.shape[1]
@@ -289,16 +291,15 @@ class DataLoader:
             # 双三次下采样（基于 opencv）
             lr_img = cv.resize(
                 hr_img.numpy(),
-                (hr_img_width // self.scale_factor,
-                 hr_img_height // self.scale_factor),
+                (hr_img_width // self.scale_factor, hr_img_height // self.scale_factor),
                 interpolation=cv.INTER_CUBIC,
             )
             # 将 numpy 数据转换为 tensor
             lr_img = tf.convert_to_tensor(lr_img, dtype=tf.uint8)
 
-            # 归一化到 [0, 1]
-            hr_img = tf.cast(hr_img, tf.float32) / 255.0
-            lr_img = tf.cast(lr_img, tf.float32) / 255.0
+            # 归一化到 [-1, 1]
+            lr_img = normalize(lr_img, (-1, 1))
+            hr_img = normalize(hr_img, (-1, 1))
         elif mode == "train" and self.downsample_mode == "second-order":
             # 归一化到 [0, 1]
             hr_img = tf.image.convert_image_dtype(hr_img, tf.float32)
@@ -328,10 +329,9 @@ class DataLoader:
                     top = 0
                 else:
                     if is_random_crop:
-                        top = tf.random.uniform([],
-                                                0,
-                                                height - crop_pad_size,
-                                                dtype=tf.int32)
+                        top = tf.random.uniform(
+                            [], 0, height - crop_pad_size, dtype=tf.int32
+                        )
                     if is_center_crop:
                         top = height // 2 - crop_pad_size // 2
 
@@ -339,16 +339,15 @@ class DataLoader:
                     left = 0
                 else:
                     if is_random_crop:
-                        left = tf.random.uniform([],
-                                                 0,
-                                                 width - crop_pad_size,
-                                                 dtype=tf.int32)
+                        left = tf.random.uniform(
+                            [], 0, width - crop_pad_size, dtype=tf.int32
+                        )
                     if is_center_crop:
                         left = width // 2 - crop_pad_size // 2
 
-                hr_img = tf.image.crop_to_bounding_box(hr_img, top, left,
-                                                       crop_pad_size,
-                                                       crop_pad_size)
+                hr_img = tf.image.crop_to_bounding_box(
+                    hr_img, top, left, crop_pad_size, crop_pad_size
+                )
             # # 升维
             # hr_img = tf.expand_dims(hr_img, axis=0)
             # # 读取二阶退化模型相关参数
@@ -387,13 +386,15 @@ class DataLoader:
         图像退化
         """
         # 模糊
-        if (opts_dict["blur_prob"]
-                == 1.0) or (tf.random.uniform([]) < opts_dict["blur_prob"]):
+        if (opts_dict["blur_prob"] == 1.0) or (
+            tf.random.uniform([]) < opts_dict["blur_prob"]
+        ):
             img = filter2D(img, blur_kernel)
 
         # 随机调整图像大小
-        updown_type = random.choices(["up", "down", "keep"],
-                                     opts_dict["resize_prob"])[0]
+        updown_type = random.choices(["up", "down", "keep"], opts_dict["resize_prob"])[
+            0
+        ]
         if updown_type == "up":
             scale = tf.random.uniform([], 1, opts_dict["resize_range"][1])
         elif updown_type == "down":
@@ -404,27 +405,25 @@ class DataLoader:
             mode = random.choice(["area", "bilinear", "bicubic"])
             if stage == "first":
                 resize_height = tf.cast(
-                    scale * tf.cast(ori_height, tf.float32), tf.int32)
-                resize_width = tf.cast(scale * tf.cast(ori_width, tf.float32),
-                                       tf.int32)
+                    scale * tf.cast(ori_height, tf.float32), tf.int32
+                )
+                resize_width = tf.cast(scale * tf.cast(ori_width, tf.float32), tf.int32)
             elif stage == "second":
                 resize_height = tf.cast(
-                    tf.cast(ori_height, tf.float32) / self.scale_factor *
-                    scale,
+                    tf.cast(ori_height, tf.float32) / self.scale_factor * scale,
                     tf.int32,
                 )
                 resize_width = tf.cast(
-                    tf.cast(ori_width, tf.float32) / self.scale_factor * scale,
-                    tf.int32)
+                    tf.cast(ori_width, tf.float32) / self.scale_factor * scale, tf.int32
+                )
             img = resize(img, resize_width, resize_height, 3, mode)
 
         # 添加噪声
         gray_noise_prob = opts_dict["gray_noise_prob"]
         if tf.random.uniform([]) < opts_dict["gaussian_noise_prob"]:
             img = random_add_gaussian_noise(
-                img,
-                sigma_range=opts_dict["noise_range"],
-                gray_prob=gray_noise_prob)
+                img, sigma_range=opts_dict["noise_range"], gray_prob=gray_noise_prob
+            )
         else:
             img = random_add_poisson_noise(
                 img,
@@ -437,9 +436,9 @@ class DataLoader:
             # 压缩图像
             img = tf.clip_by_value(img, 0, 1)
             img = [
-                tf.image.random_jpeg_quality(img[i],
-                                             opts_dict["jpeg_range"][0],
-                                             opts_dict["jpeg_range"][1])
+                tf.image.random_jpeg_quality(
+                    img[i], opts_dict["jpeg_range"][0], opts_dict["jpeg_range"][1]
+                )
                 for i in range(0, batch)
             ]
             img = tf.convert_to_tensor(img)
@@ -464,7 +463,8 @@ class DataLoader:
                         img[i],
                         opts_dict["jpeg_range"][0],
                         opts_dict["jpeg_range"][1],
-                    ) for i in range(0, batch)
+                    )
+                    for i in range(0, batch)
                 ]
                 img = tf.convert_to_tensor(img)
             else:
@@ -475,7 +475,8 @@ class DataLoader:
                         img[i],
                         opts_dict["jpeg_range"][0],
                         opts_dict["jpeg_range"][1],
-                    ) for i in range(0, batch)
+                    )
+                    for i in range(0, batch)
                 ]
                 img = tf.convert_to_tensor(img)
 
@@ -504,13 +505,16 @@ class DataLoader:
 
         lr_top = random.randint(0, ori_lr_height - lr_img_height)
         lr_left = random.randint(0, ori_lr_width - lr_img_width)
-        lr_imgs = tf.image.crop_to_bounding_box(lr_imgs, lr_top, lr_left,
-                                                lr_img_height, lr_img_width)
+        lr_imgs = tf.image.crop_to_bounding_box(
+            lr_imgs, lr_top, lr_left, lr_img_height, lr_img_width
+        )
 
         hr_top, hr_left = int(lr_top * self.scale_factor), int(
-            lr_left * self.scale_factor)
-        hr_imgs = tf.image.crop_to_bounding_box(hr_imgs, hr_top, hr_left,
-                                                hr_img_height, hr_img_width)
+            lr_left * self.scale_factor
+        )
+        hr_imgs = tf.image.crop_to_bounding_box(
+            hr_imgs, hr_top, hr_left, hr_img_height, hr_img_width
+        )
 
         return hr_imgs, lr_imgs
 
@@ -525,13 +529,16 @@ class DataLoader:
 
         lr_top = ori_lr_height // 2 - lr_img_height // 2
         lr_left = ori_lr_width // 2 - lr_img_width // 2
-        lr_imgs = tf.image.crop_to_bounding_box(lr_imgs, lr_top, lr_left,
-                                                lr_img_height, lr_img_width)
+        lr_imgs = tf.image.crop_to_bounding_box(
+            lr_imgs, lr_top, lr_left, lr_img_height, lr_img_width
+        )
 
         hr_top, hr_left = int(lr_top * self.scale_factor), int(
-            lr_left * self.scale_factor)
-        hr_imgs = tf.image.crop_to_bounding_box(hr_imgs, hr_top, hr_left,
-                                                hr_img_height, hr_img_width)
+            lr_left * self.scale_factor
+        )
+        hr_imgs = tf.image.crop_to_bounding_box(
+            hr_imgs, hr_top, hr_left, hr_img_height, hr_img_width
+        )
 
         return hr_imgs, lr_imgs
 
@@ -549,35 +556,23 @@ class DataLoader:
         获取二阶退化数据
         """
         # 创建相关核
-        first_blur_kernels = tf.constant(0,
-                                         shape=[0, 21, 21],
-                                         dtype=tf.float32)
-        second_blur_kernels = tf.constant(0,
-                                          shape=[0, 21, 21],
-                                          dtype=tf.float32)
+        first_blur_kernels = tf.constant(0, shape=[0, 21, 21], dtype=tf.float32)
+        second_blur_kernels = tf.constant(0, shape=[0, 21, 21], dtype=tf.float32)
         sinc_kernels = tf.constant(0, shape=[0, 21, 21], dtype=tf.float32)
         for _ in range(tf.shape(hr_img)[0]):
-            first_blur_kernel = generate_kernel(
-                degration_config["kernel_props_1"])
-            second_blur_kernel = generate_kernel(
-                degration_config["kernel_props_2"])
-            sinc_kernel = generate_sinc_kernel(
-                degration_config["final_sinc_prob"])
-            first_blur_kernels = tf.concat([
-                first_blur_kernels,
-                tf.expand_dims(first_blur_kernel, axis=0)
-            ],
-                                           axis=0)
+            first_blur_kernel = generate_kernel(degration_config["kernel_props_1"])
+            second_blur_kernel = generate_kernel(degration_config["kernel_props_2"])
+            sinc_kernel = generate_sinc_kernel(degration_config["final_sinc_prob"])
+            first_blur_kernels = tf.concat(
+                [first_blur_kernels, tf.expand_dims(first_blur_kernel, axis=0)], axis=0
+            )
             second_blur_kernels = tf.concat(
-                [
-                    second_blur_kernels,
-                    tf.expand_dims(second_blur_kernel, axis=0)
-                ],
+                [second_blur_kernels, tf.expand_dims(second_blur_kernel, axis=0)],
                 axis=0,
             )
             sinc_kernels = tf.concat(
-                [sinc_kernels,
-                 tf.expand_dims(sinc_kernel, axis=0)], axis=0)
+                [sinc_kernels, tf.expand_dims(sinc_kernel, axis=0)], axis=0
+            )
 
         # 锐化
         if is_usm:
@@ -613,13 +608,19 @@ class DataLoader:
 
         # 随机裁剪
         if is_random_crop:
-            hr_img, lr_img = self.random_crop(hr_img, lr_img, crop_img_height,
-                                              crop_img_width)
+            hr_img, lr_img = self.random_crop(
+                hr_img, lr_img, crop_img_height, crop_img_width
+            )
 
         # 中心裁剪
         if is_center_crop:
-            hr_img, lr_img = self.center_crop(hr_img, lr_img, crop_img_height,
-                                              crop_img_width)
+            hr_img, lr_img = self.center_crop(
+                hr_img, lr_img, crop_img_height, crop_img_width
+            )
+
+        # 将归一化区间从 [0, 1] 调整为 [-1, 1]
+        lr_img = lr_img * 2.0 - 1.0
+        hr_img = hr_img * 2.0 - 1.0
 
         return lr_img, hr_img
 
@@ -665,14 +666,16 @@ class PoolData:
             self.queue_gt = tf.gather(self.queue_gt, self.idx)
 
             # 从数据池中抽取数据
-            o_new_lr_imgs = self.queue_lr[0:new_lr_imgs.shape[0]]
-            o_new_hr_imgs = self.queue_gt[0:new_hr_imgs.shape[0]]
+            o_new_lr_imgs = self.queue_lr[0 : new_lr_imgs.shape[0]]
+            o_new_hr_imgs = self.queue_gt[0 : new_hr_imgs.shape[0]]
 
             # 在数据池中加入新数据
             self.queue_lr = tf.concat(
-                [self.queue_lr[new_lr_imgs.shape[0]:], new_lr_imgs], axis=0)
+                [self.queue_lr[new_lr_imgs.shape[0] :], new_lr_imgs], axis=0
+            )
             self.queue_gt = tf.concat(
-                [self.queue_gt[new_hr_imgs.shape[0]:], new_hr_imgs], axis=0)
+                [self.queue_gt[new_hr_imgs.shape[0] :], new_hr_imgs], axis=0
+            )
             assert self.queue_gt.shape[0] == self.pool_size
 
             return (
@@ -686,10 +689,8 @@ class PoolData:
 
             # 由于每次入池的数据量可能小于批次大小，故需要考虑数据池溢出的情况
             if self.queue_gt.shape[0] > self.pool_size:
-                self.queue_lr = self.queue_lr[self.queue_lr.shape[0] -
-                                              self.pool_size:]
-                self.queue_gt = self.queue_gt[self.queue_gt.shape[0] -
-                                              self.pool_size:]
+                self.queue_lr = self.queue_lr[self.queue_lr.shape[0] - self.pool_size :]
+                self.queue_gt = self.queue_gt[self.queue_gt.shape[0] - self.pool_size :]
                 assert self.queue_gt.shape[0] == self.pool_size
 
             return new_lr_imgs, new_hr_imgs

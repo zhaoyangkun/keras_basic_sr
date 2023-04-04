@@ -17,6 +17,7 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.losses import MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from util.generate import denormalize
 from util.layer import RRDB, create_vgg_19_features_model, upsample
 
 from model.srgan import SRGAN
@@ -233,14 +234,8 @@ class ESRGAN(SRGAN):
         内容损失
         """
         # 反归一化 vgg 输入
-        def preprocess_vgg(x):
-            if isinstance(x, np.ndarray):
-                return preprocess_input(x * 255.0)
-            else:
-                return Lambda(lambda x: preprocess_input(x * 255.0))(x)
-
-        hr_generated = preprocess_vgg(hr_generated)
-        hr_img = preprocess_vgg(hr_img)
+        hr_generated = denormalize(hr_generated, (-1, 1))
+        hr_img = denormalize(hr_img, (-1, 1))
 
         hr_generated_features = self.vgg(hr_generated) / 12.75
         hr_features = self.vgg(hr_img) / 12.75
